@@ -1,0 +1,72 @@
+{
+  "errors": {
+    "account_not_found": "Konto nicht gefunden",
+    "transaction_not_found": "Transaktion nicht gefunden",
+    "category_not_found": "Kategorie nicht gefunden",
+    "budget_not_found": "Budget nicht gefunden",
+    "user_not_found": "Benutzer nicht gefunden",
+    "email_already_registered": "E-Mail-Adresse bereits registriert",
+    "email_not_sent": "E-Mail konnte nicht gesendet werden",
+    "iban_already_exists": "Konto mit dieser IBAN existiert bereits",
+    "category_already_exists": "Kategorie mit diesem Namen existiert bereits",
+    "budget_already_exists": "Budget für diese Benutzer/Kategorie-Kombination existiert bereits",
+    "recurring_payment_not_found": "Wiederkehrende Zahlung nicht gefunden",
+    "transfer_target_required": "Ziel-Konto ist für Umbuchungen erforderlich",
+    "transfer_same_account": "Quell- und Ziel-Konto müssen unterschiedlich sein",
+    "invalid_verification_token": "Ungültiger Verifizierungs-Token",
+    "could_not_validate_credentials": "Zugangsdaten konnten nicht validiert werden",
+    "insufficient_privileges": "Der Benutzer hat nicht genügend Berechtigungen",
+    "user_already_exists": "Ein Benutzer mit dieser E-Mail existiert bereits",
+    "invalid_iban": "Die angegebene IBAN ist ungültig",
+    "iban_required": "IBAN ist für diesen Kontentyp erforderlich",
+    "invalid_interval": "Intervall ungültig",
+    "invalid_json_config": "Ungültiges JSON-Format für die Konfiguration",
+    "incorrect_credentials": "E-Mail oder Passwort ist nicht korrekt.",
+    "inactive_user": "Benutzer ist deaktiviert.",
+    "email_not_verified": "E-Mail-Adresse wurde noch nicht bestätigt."
+  },
+  "report": {
+    "title": "Monatsreport",
+    "summary": "1. Finanzielle Übersicht",
+    "income": "Gesamteinnahmen",
+    "expenses": "Gesamtausgaben",
+    "net": "Netto-Saldo",
+    "budget_control": "2. Budget-Kontrolle",
+    "category": "Kategorie",
+    "budget": "Budget",
+    "actual": "Ist",
+    "status": "Status",
+    "over_budget": "Überschritten",
+    "budget_ok": "OK",
+    "largest_expenses": "3. Größte Einzelausgaben",
+    "date": "Datum",
+    "description": "Beschreibung",
+    "amount": "Betrag",
+    "active_subscriptions": "4. Aktive Abonnements",
+    "name": "Name",
+    "interval": "Intervall",
+    "no_expenses": "Keine Ausgaben in diesem Zeitraum.",
+    "page": "Seite"
+  },
+  "email": {
+    "link_not_working": "Sollte der Button nicht funktionieren, kopiere bitte diesen Link in deinen Browser",
+    "verification": {
+      "subject": "Piggy - Bitte bestätige deine E-Mail-Adresse",
+      "title": "E-Mail bestätigen",
+      "body": "Willkommen bei Piggy! Bitte bestätige deine E-Mail-Adresse, um dein Konto zu aktivieren.",
+      "button": "E-Mail-Adresse bestätigen"
+    },
+    "activated": {
+      "subject": "Piggy - Dein Konto wurde freigeschaltet",
+      "title": "Konto freigeschaltet",
+      "body": "Gute Nachrichten! Dein Piggy-Konto wurde von einem Administrator freigeschaltet. Du kannst Piggy jetzt verwenden.",
+      "button": "Jetzt anmelden"
+    },
+    "new_user": {
+      "subject": "Piggy - Neuer Benutzer zur Freigabe",
+      "title": "Neuer Benutzer",
+      "body": "Der Benutzer <strong>{user_name}</strong> hat seine E-Mail-Adresse bestätigt und wartet nun auf deine Freigabe.",
+      "button": "Zur Benutzerverwaltung"
+    }
+  }
+}

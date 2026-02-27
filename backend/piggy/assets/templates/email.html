@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <style>
+        body {
+            font-family: 'Raleway', 'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            background-color: #E3F2FD;
+            margin: 0;
+            padding: 0;
+            color: #4A4A4A;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #FFFFFF;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
+            border: 1px solid #F0F0F0;
+        }
+
+        .header {
+            background-color: #7DB9E8;
+            background: linear-gradient(135deg, #7DB9E8 0%, #E3F2FD 100%);
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header img {
+            max-width: 60px;
+            margin-bottom: 10px;
+        }
+
+        .header h1 {
+            color: #FFFFFF;
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-shadow: 0px 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .content {
+            padding: 40px;
+            line-height: 1.6;
+        }
+
+        .content h2 {
+            margin-top: 0;
+            color: #4A4A4A;
+            font-weight: 600;
+        }
+
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .button {
+            background-color: #7DB9E8;
+            color: #FFFFFF;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 20px;
+            font-weight: 600;
+            display: inline-block;
+        }
+
+        .footer {
+            background-color: #FDFDFD;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #7A7A7A;
+            border-top: 1px solid #F0F0F0;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <img alt="Piggy Logo" src="cid:piggy_logo" style="height: 60px; width: auto">
+        <h1>piggy</h1>
+    </div>
+    <div class="content">
+        {{content}}
+    </div>
+    <div class="footer">
+        &copy; 2024 Piggy Budget Planner
+    </div>
+</div>
+</body>
+</html>

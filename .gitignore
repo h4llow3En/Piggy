@@ -1,0 +1,23 @@
+# Node
+node_modules/
+dist/
+dev-dist/
+*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OpenAPI (Generated)
+frontend/openapi.json
+
+# OS
+.DS_Store
+.idea/
+.vscode/

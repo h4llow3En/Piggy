@@ -1,0 +1,72 @@
+{
+  "errors": {
+    "account_not_found": "Account not found",
+    "transaction_not_found": "Transaction not found",
+    "category_not_found": "Category not found",
+    "budget_not_found": "Budget not found",
+    "user_not_found": "User not found",
+    "email_already_registered": "Email already registered",
+    "email_not_sent": "Unable to send email",
+    "iban_already_exists": "Account with this IBAN already exists",
+    "category_already_exists": "Category with this name already exists",
+    "budget_already_exists": "Budget for this user/category combination already exists",
+    "recurring_payment_not_found": "Recurring payment not found",
+    "transfer_target_required": "Target account is required for transfers",
+    "transfer_same_account": "Source and target account must be different",
+    "invalid_verification_token": "Invalid verification token",
+    "could_not_validate_credentials": "Could not validate credentials",
+    "insufficient_privileges": "The user doesn't have enough privileges",
+    "user_already_exists": "The user with this email already exists in the system.",
+    "invalid_iban": "The provided IBAN is invalid",
+    "iban_required": "IBAN is required for this account type",
+    "invalid_interval": "Interval is invalid",
+    "invalid_json_config": "Invalid JSON format for the configuration",
+    "incorrect_credentials": "Email or password is incorrect.",
+    "inactive_user": "User is inactive.",
+    "email_not_verified": "Email address has not been verified yet."
+  },
+  "report": {
+    "title": "Monthly Report",
+    "summary": "1. Financial Summary",
+    "income": "Total Income",
+    "expenses": "Total Expenses",
+    "net": "Net Balance",
+    "budget_control": "2. Budget Control",
+    "category": "Category",
+    "budget": "Budget",
+    "actual": "Actual",
+    "status": "Status",
+    "over_budget": "Over Budget",
+    "budget_ok": "OK",
+    "largest_expenses": "3. Largest Single Expenses",
+    "date": "Date",
+    "description": "Description",
+    "amount": "Amount",
+    "active_subscriptions": "4. Active Subscriptions",
+    "name": "Name",
+    "interval": "Interval",
+    "no_expenses": "No expenses in this period.",
+    "page": "Page"
+  },
+  "email": {
+    "link_not_working": "If the button does not work, please copy this link into your browser",
+    "verification": {
+      "subject": "Piggy - Please confirm your email address",
+      "title": "Confirm Email",
+      "body": "Welcome to Piggy! Please confirm your email address to activate your account.",
+      "button": "Confirm Email Address"
+    },
+    "activated": {
+      "subject": "Piggy - Your account has been activated",
+      "title": "Account Activated",
+      "body": "Great news! Your Piggy account has been activated by an administrator. You can now start using Piggy.",
+      "button": "Login Now"
+    },
+    "new_user": {
+      "subject": "Piggy - New user pending approval",
+      "title": "New User",
+      "body": "The user <strong>{user_name}</strong> has confirmed their email address and is now waiting for your approval.",
+      "button": "Open User Management"
+    }
+  }
+}
