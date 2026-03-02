@@ -1,0 +1,72 @@
+services:
+  db:
+    image: postgres:latest
+    container_name: piggy_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-piggy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-LOCAL_PW}
+      POSTGRES_DB: ${POSTGRES_DB:-piggy_db}
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-piggy} -d ${POSTGRES_DB:-piggy_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/h4llow3en/piggy/backend:latest
+    container_name: piggy_backend
+    restart: always
+    environment:
+      - POSTGRES_SERVER=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-piggy}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-LOCAL_PW}
+      - POSTGRES_DB=${POSTGRES_DB:-piggy_db}
+      - SECRET_KEY=${SECRET_KEY:-YOUR_SECRET_KEY}
+      - MAIL_USERNAME=${MAIL_USERNAME:-}
+      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
+      - MAIL_FROM=${MAIL_FROM:-noreply@piggy.example}
+      - MAIL_PORT=${MAIL_PORT:-1025}
+      - MAIL_SERVER=${MAIL_SERVER:-localhost}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME:-Piggy}
+      - MAIL_STARTTLS=${MAIL_STARTTLS:-False}
+      - MAIL_SSL_TLS=${MAIL_SSL_TLS:-False}
+      - USE_CREDENTIALS=${USE_CREDENTIALS:-False}
+      - VALIDATE_CERTS=${VALIDATE_CERTS:-False}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.piggy-backend.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.piggy-backend.entrypoints=web"
+      - "traefik.http.services.piggy-backend.loadbalancer.server.port=8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    image: ghcr.io/h4llow3en/piggy/frontend:latest
+    container_name: piggy_frontend
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.piggy-frontend.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.piggy-frontend.entrypoints=web"
+      - "traefik.http.services.piggy-frontend.loadbalancer.server.port=80"
+    depends_on:
+      - backend
+
+  # traefik:
+  #   image: traefik:v3.3
+  #   container_name: piggy_traefik
+  #   command:
+  #     - "--api.insecure=true"
+  #     - "--providers.docker=true"
+  #     - "--providers.docker.exposedbydefault=false"
+  #     - "--entrypoints.web.address=:80"
+  #   ports:
+  #     - "80:80"
+  #     - "8080:8080" # Dashboard
+  #   volumes:
+  #     - "/var/run/docker.sock:/var/run/docker.sock:ro"

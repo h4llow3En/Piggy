@@ -29,7 +29,6 @@ from piggy.models.statistic import (
 )
 
 
-
 async def categories_spent_statistics(db: AsyncSession, current_user: User):
     """
     Retrieves category spend statistics for all users and the current user
