@@ -60,6 +60,7 @@ Deploy your personal instance using Docker.
 * **Mail Templates** Fix and extend existing mail templates for better user notifications.
 * **Exports** Refresh and fix data export functionality (CSV, PDF, etc.).
 * **Bank Support** Support for additional banks in the FinTS client. **Help wanted**, as this requires testing with actual bank accounts.
+* **Suggestions** Add recurring payment suggestions endpoint to frontend.
 
 ---
 
