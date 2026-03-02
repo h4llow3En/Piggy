@@ -5,13 +5,12 @@ Miscellaneous functions to calculate statistics
 from collections import defaultdict, OrderedDict
 from datetime import date
 from decimal import Decimal
-from typing import List, Tuple
 
-from dateutil.relativedelta import relativedelta
 from sqlalchemy import select, func, case, and_, text, extract
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import coalesce
 
+from dateutil.relativedelta import relativedelta
 from piggy.core.utils import get_past_transactions_average
 from piggy.models.database.account import Account
 from piggy.models.database.budget import Budget
@@ -28,6 +27,7 @@ from piggy.models.statistic import (
     CashflowStatistics,
     MonthlyCashflowItem,
 )
+
 
 
 async def categories_spent_statistics(db: AsyncSession, current_user: User):
@@ -79,7 +79,7 @@ def _map_spend_statistics(statistic_rows: list):
     return spent_statistic
 
 
-async def balance_statistics(
+async def balance_statistics(  # pylint: disable=too-many-locals
     db: AsyncSession, current_user: User
 ) -> list[AccountBalanceStatistics]:
     """
@@ -90,63 +90,56 @@ async def balance_statistics(
 
     # Get changes grouped by account and date
     combined_changes_stmt = (
-        (
-            select(
-                Transaction.account_id.label("account_id"),
-                func.date(Transaction.timestamp).label("date"),
-                func.sum(
-                    case(
-                        (
-                            Transaction.type == TransactionType.INCOME,
-                            Transaction.amount,
-                        ),
-                        (
-                            Transaction.type == TransactionType.EXPENSE,
-                            -Transaction.amount,
-                        ),
-                        (
-                            Transaction.type == TransactionType.TRANSFER,
-                            -Transaction.amount,
-                        ),
-                        else_=Decimal("0.00"),
-                    )
-                ).label("change"),
-            )
-            .where(func.date(Transaction.timestamp) >= start_date)
-            .group_by(Transaction.account_id, func.date(Transaction.timestamp))
-        )
-        .union_all(
-            select(
-                Transaction.target_account_id.label("account_id"),
-                func.date(Transaction.timestamp).label("date"),
-                func.sum(Transaction.amount).label("change"),
-            )
-            .where(
-                and_(
-                    Transaction.type == TransactionType.TRANSFER,
-                    Transaction.target_account_id.isnot(None),
-                    func.date(Transaction.timestamp) >= start_date,
+        select(
+            Transaction.account_id.label("account_id"),
+            func.date(Transaction.timestamp).label("date"),
+            func.sum(
+                case(
+                    (
+                        Transaction.type == TransactionType.INCOME,
+                        Transaction.amount,
+                    ),
+                    (
+                        Transaction.type == TransactionType.EXPENSE,
+                        -Transaction.amount,
+                    ),
+                    (
+                        Transaction.type == TransactionType.TRANSFER,
+                        -Transaction.amount,
+                    ),
+                    else_=Decimal("0.00"),
                 )
-            )
-            .group_by(Transaction.target_account_id, func.date(Transaction.timestamp))
+            ).label("change"),
         )
+        .where(func.date(Transaction.timestamp) >= start_date)
+        .group_by(Transaction.account_id, func.date(Transaction.timestamp))
+    ).union_all(
+        select(
+            Transaction.target_account_id.label("account_id"),
+            func.date(Transaction.timestamp).label("date"),
+            func.sum(Transaction.amount).label("change"),
+        )
+        .where(
+            and_(
+                Transaction.type == TransactionType.TRANSFER,
+                Transaction.target_account_id.isnot(None),
+                func.date(Transaction.timestamp) >= start_date,
+            )
+        )
+        .group_by(Transaction.target_account_id, func.date(Transaction.timestamp))
     )
 
     combined_changes = combined_changes_stmt.subquery()
 
-    grouped_changes_stmt = (
-        select(
-            combined_changes.c.account_id,
-            combined_changes.c.date,
-            func.sum(combined_changes.c.change).label("change"),
-        )
-        .group_by(combined_changes.c.account_id, combined_changes.c.date)
-    )
+    grouped_changes_stmt = select(
+        combined_changes.c.account_id,
+        combined_changes.c.date,
+        func.sum(combined_changes.c.change).label("change"),
+    ).group_by(combined_changes.c.account_id, combined_changes.c.date)
 
     result = await db.execute(grouped_changes_stmt)
     changes = defaultdict(dict)
     for row in result.all():
-        # row.date might be a string in some SQLite drivers or a date object
         d = row.date
         if isinstance(d, str):
             d = date.fromisoformat(d)
@@ -162,26 +155,26 @@ async def balance_statistics(
     accounts = accounts_result.all()
 
     last_day_of_month = current_date + relativedelta(day=31)
-    
+
     output = []
     for acc_row in accounts:
         acc = acc_row[0]
         user_name = acc_row[1]
-        
+
         acc_name = acc.name
         if acc.user_id != current_user.id:
             acc_name = f"{acc.name} ({user_name})"
-            
+
         history = []
         curr_balance = acc.balance
-        
+
         # We work backwards from today's balance
         # changes[acc.id] contains changes from start_date to today
-        
+
         # Pre-calculate balances for each day by working backwards from current balance
         daily_balances = {}
         temp_balance = curr_balance
-        
+
         # Iterate from today back to start_date
         d = current_date
         while d >= start_date:
@@ -189,37 +182,37 @@ async def balance_statistics(
             # The balance on day D is (Balance on day D+1) - (Change on day D+1)
             # Wait, no. Current balance is the balance *after* all transactions until now.
             # So Balance(D) = Balance(today) - Sum(Changes from D+1 to today)
-            
+
             change = changes.get(acc.id, {}).get(d, Decimal(0))
             temp_balance -= change
             d -= relativedelta(days=1)
-            
+
         # Now fill history in forward order
         d = start_date
         while d <= current_date:
             history.append(AccountBalanceItem(date=d, balance=daily_balances[d]))
             d += relativedelta(days=1)
-            
+
         # Add prognosis (forward)
         avg_daily_change = await get_past_transactions_average(
             db, current_user, account_ids={acc.id}
         ) / Decimal(last_day_of_month.day)
-        
+
         temp_prognosis_balance = curr_balance
         d = current_date + relativedelta(days=1)
         while d <= last_day_of_month:
             temp_prognosis_balance += avg_daily_change
             history.append(AccountBalanceItem(date=d, balance=temp_prognosis_balance))
             d += relativedelta(days=1)
-            
+
         output.append(
             AccountBalanceStatistics(
                 name=acc_name,
                 own_account=acc.user_id == current_user.id,
-                history=history
+                history=history,
             )
         )
-        
+
     return output
 
 

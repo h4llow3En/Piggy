@@ -10,7 +10,7 @@ from sqlalchemy import delete, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from piggy.core.subscriptions import (
-    detect_potential_subscriptions,
+    detect_potential_recurring_payments,
     normalize_description,
 )
 from piggy.models.database.subscription import SubscriptionCandidate, SubscriptionIgnore
@@ -37,10 +37,8 @@ async def rebuild_user(db: AsyncSession, user_id: uuid.UUID) -> int:
     ).all()
     ignore_set = {(row.normalized_name, row.amount) for row in ignores}
 
-    # Detect candidates
-    candidates = await detect_potential_subscriptions(db, user_id)
+    candidates = await detect_potential_recurring_payments(db, user_id)
 
-    # Filter with ignores
     filtered = []
     for c in candidates:
         norm = normalize_description(c.name)
@@ -50,7 +48,6 @@ async def rebuild_user(db: AsyncSession, user_id: uuid.UUID) -> int:
             continue
         filtered.append(c)
 
-    # Replace cache for user
     await db.execute(
         delete(SubscriptionCandidate).where(SubscriptionCandidate.user_id == user_id)
     )
@@ -78,10 +75,10 @@ async def rebuild_user(db: AsyncSession, user_id: uuid.UUID) -> int:
 async def add_ignore(
     db: AsyncSession, user_id: uuid.UUID, name: str, amount=None
 ) -> None:
+    """Add a potential recurring payment to ignore list for user."""
     norm = normalize_description(name)
     now = datetime.now(timezone.utc)
 
-    # Upsert-like: try insert, ignore on conflict (unique constraint covers it)
     if amount is None:
         amount_condition = SubscriptionIgnore.amount.is_(None)
     else:
@@ -109,6 +106,7 @@ async def add_ignore(
 
 
 async def list_ignores(db: AsyncSession, user_id: uuid.UUID):
+    """List ignored recurring payment suggestions for user."""
     rows = (
         (
             await db.execute(
@@ -122,6 +120,7 @@ async def list_ignores(db: AsyncSession, user_id: uuid.UUID):
 
 
 async def list_cached_candidates(db: AsyncSession, user_id: uuid.UUID):
+    """List cached recurring payment suggestions for user."""
     rows = (
         (
             await db.execute(

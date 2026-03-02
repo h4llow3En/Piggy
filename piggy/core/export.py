@@ -1,3 +1,7 @@
+"""
+Export module for generating CSV and PDF reports.
+"""
+
 import csv
 import io
 import uuid
@@ -5,13 +9,17 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import select, and_, func, case, text
+from dateutil.relativedelta import relativedelta
+from fpdf import FPDF, XPos, YPos
+from sqlalchemy import select, and_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from piggy.core.i18n import _
 from piggy.models.database.account import Account
+from piggy.models.database.budget import Budget
 from piggy.models.database.category import Category
+from piggy.models.database.recurring_payment import RecurringPayment
 from piggy.models.database.transaction import Transaction, TransactionType
 
 
@@ -59,20 +67,13 @@ async def export_transactions_csv(
     return output.getvalue()
 
 
-async def generate_monthly_pdf_report(
+async def generate_monthly_pdf_report(  # pylint: disable=too-many-statements,too-many-locals
     db: AsyncSession, user_id: uuid.UUID, year: int, month: int
 ) -> bytes:
     """Generate an expanded PDF report for a specific month for the given user."""
-    from fpdf import FPDF  # type: ignore
-    from dateutil.relativedelta import relativedelta
-    from piggy.models.database.budget import Budget
-    from piggy.models.database.recurring_payment import RecurringPayment
-
-    # Compute date range
     start_date = date(year, month, 1)
     end_date = start_date + relativedelta(months=1)
 
-    # 1. Aggregate totals (Income vs Expenses)
     totals_query = (
         select(
             func.sum(
@@ -103,9 +104,9 @@ async def generate_monthly_pdf_report(
     income = Decimal(row.income or 0) if row else Decimal(0)
     expenses = Decimal(row.expenses or 0) if row else Decimal(0)
 
-    # 2. Top categories by spend
     cat_query = (
         select(Category.name, func.sum(Transaction.amount).label("spent"))
+        .join(Transaction, Transaction.category_id == Category.id)
         .join(Account, Transaction.account_id == Account.id)
         .where(
             and_(
@@ -113,7 +114,6 @@ async def generate_monthly_pdf_report(
                 Transaction.timestamp >= start_date,
                 Transaction.timestamp < end_date,
                 Transaction.type == TransactionType.EXPENSE,
-                Transaction.category_id.is_not(None),
             )
         )
         .group_by(Category.name)
@@ -122,12 +122,9 @@ async def generate_monthly_pdf_report(
     )
     top_cats = list((await db.execute(cat_query)).all())
 
-    # 3. Budget vs Actual
-    # Use a subquery to avoid cartesian products and correctly filter by user
     actual_spent_subquery = (
         select(
-            Transaction.category_id,
-            func.sum(Transaction.amount).label("total_spent")
+            Transaction.category_id, func.sum(Transaction.amount).label("total_spent")
         )
         .join(Account, Transaction.account_id == Account.id)
         .where(
@@ -150,8 +147,7 @@ async def generate_monthly_pdf_report(
         )
         .join(Category, Budget.category_id == Category.id)
         .outerjoin(
-            actual_spent_subquery,
-            actual_spent_subquery.c.category_id == Category.id
+            actual_spent_subquery, actual_spent_subquery.c.category_id == Category.id
         )
         .where(Budget.user_id == user_id)
     )
@@ -174,7 +170,6 @@ async def generate_monthly_pdf_report(
     )
     large_txs = list((await db.execute(large_tx_query)).all())
 
-    # 5. Subscriptions (Active Recurring Payments)
     recurring_query = select(
         RecurringPayment.name, RecurringPayment.amount, RecurringPayment.interval
     ).where(
@@ -183,52 +178,63 @@ async def generate_monthly_pdf_report(
             RecurringPayment.is_subscription.is_(True),
         )
     )
-    subscriptions = list((await db.execute(recurring_query)).all())
+    recurring_payments = list((await db.execute(recurring_query)).all())
 
-    # Build PDF
     pdf = FPDF()
+
+    font_name = "Helvetica"
+
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
 
-    # Theme Colors (based on email.html)
+    # Theme Colors
     # Background Blue: #E3F2FD (227, 242, 253)
     # Primary Blue: #7DB9E8 (125, 185, 232)
     # Text Gray: #4A4A4A (74, 74, 74)
 
-    # Header with Branding
     pdf.set_fill_color(125, 185, 232)  # Primary Blue
     pdf.rect(0, 0, 210, 40, "F")
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 24)
-    pdf.cell(0, 20, "piggy", ln=True, align="C")
-    pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, f"{_('report.title')} - {year}-{month:02d}", ln=True, align="C")
+    pdf.set_font(font_name, "B", 24)
+    pdf.cell(0, 20, "piggy", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font(font_name, "B", 14)
+    pdf.cell(
+        0,
+        10,
+        f"{_('report.title')} - {year}-{month:02d}",
+        align="C",
+        new_x=XPos.LMARGIN,
+        new_y=YPos.NEXT,
+    )
     pdf.ln(15)
 
     pdf.set_text_color(74, 74, 74)  # Reset to Text Gray
 
-    # 1. Summary Section
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, _("report.summary"), ln=True)
+    pdf.set_font(font_name, "B", 16)
+    pdf.cell(0, 10, _("report.summary"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_draw_color(125, 185, 232)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(5)
 
-    pdf.set_font("Helvetica", "", 12)
+    pdf.set_font(font_name, "", 12)
     pdf.cell(100, 8, f"{_('report.income')}:", 0)
-    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_font(font_name, "B", 12)
     pdf.set_text_color(0, 150, 0)  # Green for income
-    pdf.cell(0, 8, f"+ {income:,.2f} EUR", ln=True, align="R")
+    pdf.cell(
+        0, 8, f"+ {income:,.2f} EUR", align="R", new_x=XPos.LMARGIN, new_y=YPos.NEXT
+    )
 
     pdf.set_text_color(74, 74, 74)
-    pdf.set_font("Helvetica", "", 12)
+    pdf.set_font(font_name, "", 12)
     pdf.cell(100, 8, f"{_('report.expenses')}:", 0)
-    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_font(font_name, "B", 12)
     pdf.set_text_color(200, 0, 0)  # Red for expenses
-    pdf.cell(0, 8, f"- {expenses:,.2f} EUR", ln=True, align="R")
+    pdf.cell(
+        0, 8, f"- {expenses:,.2f} EUR", align="R", new_x=XPos.LMARGIN, new_y=YPos.NEXT
+    )
 
     pdf.set_text_color(74, 74, 74)
-    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_font(font_name, "B", 12)
     pdf.cell(100, 10, f"{_('report.net')}:", 0)
     net = income - expenses
     if net >= 0:
@@ -237,24 +243,53 @@ async def generate_monthly_pdf_report(
     else:
         prefix = ""
         pdf.set_text_color(200, 0, 0)
-    pdf.cell(0, 10, f"{prefix}{net:,.2f} EUR", ln=True, align="R")
+    pdf.cell(
+        0, 10, f"{prefix}{net:,.2f} EUR", align="R", new_x=XPos.LMARGIN, new_y=YPos.NEXT
+    )
     pdf.set_text_color(74, 74, 74)
     pdf.ln(5)
 
-    # 2. Budget vs Actual
-    if budgets_res:
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 10, _("report.budget_control"), ln=True)
+    if top_cats:
+        pdf.set_font(font_name, "B", 16)
+        pdf.cell(0, 10, _("report.top_categories"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
 
-        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_font(font_name, "B", 11)
+        pdf.cell(140, 8, _("report.category"), 1)
+        pdf.cell(
+            50, 8, _("report.amount"), 1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C"
+        )
+
+        pdf.set_font(font_name, "", 10)
+        for cat_name, spent in top_cats:
+            pdf.cell(140, 8, cat_name, 1)
+            pdf.cell(
+                50,
+                8,
+                f"{spent:,.2f} EUR",
+                1,
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+                align="R",
+            )
+        pdf.ln(10)
+
+    if budgets_res:
+        pdf.set_font(font_name, "B", 16)
+        pdf.cell(0, 10, _("report.budget_control"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(5)
+
+        pdf.set_font(font_name, "B", 11)
         pdf.cell(80, 8, _("report.category"), 1)
         pdf.cell(40, 8, _("report.budget"), 1, 0, "C")
         pdf.cell(40, 8, _("report.actual"), 1, 0, "C")
-        pdf.cell(30, 8, _("report.status"), 1, 1, "C")
+        pdf.cell(
+            30, 8, _("report.status"), 1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C"
+        )
 
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font(font_name, "", 10)
         for b_name, b_amount, b_actual in budgets_res:
             pdf.cell(80, 8, b_name, 1)
             pdf.cell(40, 8, f"{b_amount:,.2f} EUR", 1, 0, "R")
@@ -265,53 +300,77 @@ async def generate_monthly_pdf_report(
             else:
                 pdf.set_text_color(0, 120, 0)
                 status_txt = _("report.budget_ok")
-            pdf.cell(30, 8, status_txt, 1, 1, "C")
+            pdf.cell(
+                30, 8, status_txt, 1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C"
+            )
             pdf.set_text_color(74, 74, 74)
         pdf.ln(10)
 
-    # 3. Largest single transactions
     if large_txs:
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 10, _("report.largest_expenses"), ln=True)
+        pdf.set_font(font_name, "B", 16)
+        pdf.cell(
+            0, 10, _("report.largest_expenses"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
 
-        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_font(font_name, "B", 11)
         pdf.cell(30, 8, _("report.date"), 1)
         pdf.cell(120, 8, _("report.description"), 1)
-        pdf.cell(40, 8, _("report.amount"), 1, 1, "C")
+        pdf.cell(
+            40, 8, _("report.amount"), 1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C"
+        )
 
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font(font_name, "", 10)
         for t_date, t_desc, t_amount in large_txs:
             pdf.cell(30, 8, t_date.strftime("%d.%m.%Y"), 1)
             pdf.cell(120, 8, (t_desc[:60] + "..") if len(t_desc) > 60 else t_desc, 1)
-            pdf.cell(40, 8, f"{t_amount:,.2f} EUR", 1, 1, "R")
+            pdf.cell(
+                40,
+                8,
+                f"{t_amount:,.2f} EUR",
+                1,
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+                align="R",
+            )
         pdf.ln(10)
 
-    # 4. Subscriptions
-    if subscriptions:
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(0, 10, _("report.active_subscriptions"), ln=True)
+    if recurring_payments:
+        pdf.set_font(font_name, "B", 16)
+        pdf.cell(
+            0, 10, _("report.active_subscriptions"), new_x=XPos.LMARGIN, new_y=YPos.NEXT
+        )
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
 
-        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_font(font_name, "B", 11)
         pdf.cell(110, 8, _("report.name"), 1)
         pdf.cell(40, 8, _("report.interval"), 1)
-        pdf.cell(40, 8, _("report.amount"), 1, 1, "C")
+        pdf.cell(
+            40, 8, _("report.amount"), 1, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C"
+        )
 
-        pdf.set_font("Helvetica", "", 10)
-        for s_name, s_amount, s_interval in subscriptions:
+        pdf.set_font(font_name, "", 10)
+        for s_name, s_amount, s_interval in recurring_payments:
             pdf.cell(110, 8, s_name, 1)
             pdf.cell(40, 8, str(s_interval), 1)
-            pdf.cell(40, 8, f"{s_amount:,.2f} EUR", 1, 1, "R")
+            pdf.cell(
+                40,
+                8,
+                f"{s_amount:,.2f} EUR",
+                1,
+                new_x=XPos.LMARGIN,
+                new_y=YPos.NEXT,
+                align="R",
+            )
         pdf.ln(10)
 
     # Footer with page numbers
     pdf.set_y(-15)
-    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_font(font_name, "I", 8)
     pdf.set_text_color(150, 150, 150)
-    pdf.cell(0, 10, f"{_('report.page')} {pdf.page_no()}", 0, 0, "C")
+    pdf.cell(0, 10, f"{_('report.page')} {pdf.page_no()}", align="C")
 
     # Return PDF as bytes
     return bytes(pdf.output())

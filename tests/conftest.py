@@ -1,3 +1,8 @@
+import os
+
+# Set dummy SECRET_KEY for tests before importing anything from piggy
+os.environ["SECRET_KEY"] = "test-secret-key"
+
 import asyncio
 import pytest
 import pytest_asyncio

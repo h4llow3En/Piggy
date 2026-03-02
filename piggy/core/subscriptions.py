@@ -1,3 +1,6 @@
+"""
+Module to detect potential /recurring payments.
+"""
 import re
 import statistics
 import uuid
@@ -14,8 +17,12 @@ from piggy.models.database.recurring_payment import RecurringInterval, Recurring
 from piggy.models.database.transaction import Transaction, TransactionType
 
 
-class SubscriptionCandidate:
-    def __init__(
+class RecurringPaymentCandidate:  # pylint: disable=too-few-public-methods
+    """
+    Represents a potential recurring payment detected from transaction history.
+    """
+
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         name: str,
         amount: Decimal,
@@ -30,6 +37,9 @@ class SubscriptionCandidate:
         self.last_date = last_date
 
     def to_dict(self):
+        """
+        Convert RecurringPaymentCandidate to dictionary for serialization.
+        """
         return {
             "name": self.name,
             "amount": self.amount,
@@ -56,7 +66,9 @@ def _normalize_description(desc: str) -> str:
     return desc.strip()
 
 
-def _detect_interval(txs: List[Transaction]) -> Optional[RecurringInterval]:
+def _detect_interval(  # pylint: disable=too-many-return-statements
+    txs: List[Transaction],
+) -> Optional[RecurringInterval]:
     """Detect if transactions follow a regular interval.
     Returns the most likely interval or None if variance is too high.
     """
@@ -70,10 +82,8 @@ def _detect_interval(txs: List[Transaction]) -> Optional[RecurringInterval]:
 
     avg_interval = sum(intervals) / len(intervals)
 
-    # Check variance. If variance is too high, it's probably not a subscription
     if len(intervals) > 1:
         stdev = statistics.stdev(intervals)
-        # Allow some slack for weekends/holidays (e.g., +/- 4 days)
         if stdev > 5:
             return None
 
@@ -91,15 +101,14 @@ def _detect_interval(txs: List[Transaction]) -> Optional[RecurringInterval]:
     return None
 
 
-async def detect_potential_subscriptions(
+async def detect_potential_recurring_payments(  # pylint: disable=too-many-locals
     db: AsyncSession, user_id: uuid.UUID
-) -> List[SubscriptionCandidate]:
+) -> List[RecurringPaymentCandidate]:
     """
     Analyzes transaction history to find potential recurring payments/subscriptions.
     Filters out common non-subscription recurring items like groceries by requiring
     exact amount matches and consistent intervals.
     """
-    # Look back 2 years to find yearly/quarterly subs
     lookback_limit = datetime.now() - timedelta(days=730)
 
     query = (
@@ -115,43 +124,39 @@ async def detect_potential_subscriptions(
         .order_by(Transaction.timestamp.asc())
     )
 
-    result = await db.execute(query)
-    transactions = result.scalars().all()
+    transactions = (await db.execute(query)).scalars().all()
 
-    # 1. Group by normalized description
     desc_groups = defaultdict(list)
     for tx in transactions:
         norm_desc = _normalize_description(tx.description)
-        if len(norm_desc) < 3:  # Skip very short descriptions
+        if len(norm_desc) < 3:
             continue
         desc_groups[norm_desc].append(tx)
 
     candidates = []
 
-    # 2. Get existing recurring payment names to avoid duplicates
     existing_query = select(RecurringPayment.name).where(
         RecurringPayment.user_id == user_id
     )
-    existing_names = (await db.execute(existing_query)).scalars().all()
-    existing_names_norm = {name.lower().strip() for name in existing_names}
+    existing_names = {
+        name.lower().strip()
+        for name in (await db.execute(existing_query)).scalars().all()
+    }
 
     for norm_desc, txs in desc_groups.items():
         # Avoid already tracked subscriptions
         if any(
             norm_desc in existing_name or existing_name in norm_desc
-            for existing_name in existing_names_norm
+            for existing_name in existing_names
         ):
             continue
 
-        # 3. Within each description group, group by EXACT amount
-        # This is the key to filter out groceries (where amounts vary)
         amount_groups = defaultdict(list)
         for tx in txs:
             amount_groups[tx.amount].append(tx)
 
         for amount, amt_txs in amount_groups.items():
             if len(amt_txs) < 2:
-                # Not enough data points
                 continue
 
             # Check day-of-month consistency (avoid grocery-like weekly patterns)
@@ -161,14 +166,13 @@ async def detect_potential_subscriptions(
                     dom_stdev = statistics.stdev(dom)
                     if dom_stdev > 5:  # too scattered over the month
                         continue
-                except Exception:
+                except Exception:  # pylint: disable=broad-exception-caught
                     pass
 
             interval = _detect_interval(amt_txs)
             if not interval:
                 continue
 
-            # Minimal occurrences per interval to reduce false positives
             min_counts = {
                 RecurringInterval.WEEKLY: 4,
                 RecurringInterval.MONTHLY: 3,
@@ -179,11 +183,9 @@ async def detect_potential_subscriptions(
             if len(amt_txs) < min_counts.get(interval, 3):
                 continue
 
-            # Pick the most recent original description for the candidate
-            name = amt_txs[-1].description
             candidates.append(
-                SubscriptionCandidate(
-                    name=name,
+                RecurringPaymentCandidate(
+                    name=amt_txs[-1].description,
                     amount=amount,
                     interval=interval,
                     count=len(amt_txs),
@@ -191,6 +193,5 @@ async def detect_potential_subscriptions(
                 )
             )
 
-    # Sort candidates by count (more occurrences first)
     candidates.sort(key=lambda x: x.count, reverse=True)
     return candidates

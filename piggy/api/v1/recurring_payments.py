@@ -6,12 +6,15 @@ import uuid
 from decimal import Decimal
 from typing import List
 
-from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fastapi import APIRouter, Depends, status
 from piggy.core.auth import get_current_user
 from piggy.core.database import get_db
+from piggy.core.subscription_cache import add_ignore, rebuild_user
+from piggy.core.subscription_cache import list_cached_candidates
+from piggy.core.subscription_cache import list_ignores
 from piggy.core.utils import (
     get_account_or_404,
     get_category_or_404,
@@ -32,12 +35,11 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("/detect", response_model=List[SubscriptionCandidateResponse])
-async def get_cached_subscriptions(
+async def get_cached_recurring_payments(
     db: AsyncSession = Depends(get_db),
     current_user: UserDB = Depends(get_current_user),
 ):
-    """Retrieve cached potential subscriptions."""
-    from piggy.core.subscription_cache import list_cached_candidates
+    """Retrieve cached potential recurring payment."""
 
     rows = await list_cached_candidates(db, current_user.id)
     return [
@@ -53,27 +55,24 @@ async def get_cached_subscriptions(
 
 
 @router.post("/detect/ignore", status_code=status.HTTP_204_NO_CONTENT)
-async def add_subscription_ignore(
+async def add_recurring_payment_ignore(
     name: str,
     amount: Decimal | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: UserDB = Depends(get_current_user),
 ):
-    from piggy.core.subscription_cache import add_ignore, rebuild_user
-
+    """Ignore a suggested recurring payment."""
     await add_ignore(db, current_user.id, name, amount)
-    # Optional: immediately refresh cached list for responsiveness
     await rebuild_user(db, current_user.id)
     return None
 
 
 @router.get("/detect/ignore", response_model=List[str])
-async def list_subscription_ignores(
+async def list_recurring_payment_ignores(
     db: AsyncSession = Depends(get_db),
     current_user: UserDB = Depends(get_current_user),
 ):
-    from piggy.core.subscription_cache import list_ignores
-
+    """List ignored recurring payments."""
     rows = await list_ignores(db, current_user.id)
     return [r.normalized_name for r in rows]
 
