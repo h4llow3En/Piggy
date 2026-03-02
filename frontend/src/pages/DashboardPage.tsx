@@ -957,9 +957,7 @@ const DashboardPage: React.FC = () => {
                             {!syncError ? (
                                 <>
                                     <Box sx={{position: 'relative'}}>
-                                        <PiggyBank size={64}/>
-                                        <Coins size={28}
-                                               style={{position: 'absolute', top: -8, right: -8, opacity: 0.8}}/>
+                                        <PiggyBank size={128}/>
                                     </Box>
                                     <CircularProgress/>
                                     <Typography>
