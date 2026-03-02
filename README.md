@@ -11,7 +11,6 @@
   <img src="https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi&logoColor=black" alt="Backend">
   <img src="https://img.shields.io/badge/Frontend-React%2019-61DAFB?logo=react&logoColor=black" alt="Frontend">
   <img src="https://img.shields.io/badge/Coverage-54%25-brightgreen" alt="Coverage">
-  <a href="https://www.buymeacoffee.com/h4llow3En"><img src="https://img.shields.io/badge/Support-Buy%20Me%20A%20Coffee-FFDD00?logo=buy-me-a-coffee&logoColor=black" alt="Buy Me A Coffee"></a>
 </p>
 
 ---
@@ -56,6 +55,14 @@ Deploy your personal instance using Docker.
 
 ---
 
+## Roadmap
+
+* **Mail Templates** Fix and extend existing mail templates for better user notifications.
+* **Exports** Refresh and fix data export functionality (CSV, PDF, etc.).
+* **Bank Support** Support for additional banks in the FinTS client. **Help wanted**, as this requires testing with actual bank accounts.
+
+---
+
 ## Security & Privacy
 
 * **Self-Hosted** Your financial data remains on your infrastructure.
@@ -65,9 +72,5 @@ Deploy your personal instance using Docker.
 ---
 
 <p align="center">
-  <i>"Control your money, don't let your money control you."</i>
-<br/><br/>
-  <a href="https://www.buymeacoffee.com/h4llow3En">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 40px !important;width: 145px !important;" >
-  </a>
+  <i>Control your money, don't let your money control you.</i>
 </p>
