@@ -12,6 +12,8 @@ import {
     TextField,
     Typography
 } from '@mui/material';
+import type { TFunction } from 'i18next';
+import type { Account, AccountWithUser, CategoryRead, RecurringPayment, User } from '../api/piggy';
 import { TransactionType } from '../api/piggy';
 import { formatCurrency } from '../utils/format';
 
@@ -34,18 +36,12 @@ interface TransactionFormProps {
         timestamp: string;
     };
     onChange: (update: Partial<TransactionFormProps['data']>) => void;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    allAccounts?: any[];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    categories?: any[];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    transferTargets?: any[];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recurringPayments?: any[];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    user?: any;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    t: any;
+    allAccounts?: Account[];
+    categories?: CategoryRead[];
+    transferTargets?: AccountWithUser[];
+    recurringPayments?: RecurringPayment[];
+    user?: User | null;
+    t: TFunction;
     disabledAccount?: boolean;
 }
 

@@ -5,6 +5,7 @@ export default defineConfig({
         input: './openapi.json',
         output: {
             target: 'src/api/piggy.ts',
+            tsconfig: './tsconfig.app.json',
             client: 'react-query',
             httpClient: 'axios',
             mock: false,

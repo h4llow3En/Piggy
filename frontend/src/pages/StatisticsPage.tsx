@@ -12,9 +12,11 @@ import {
     Paper,
     Select,
     Slider,
-    Typography
+    Typography,
+    Button
 } from '@mui/material';
 import {useTranslation} from 'react-i18next';
+import {FileText} from 'lucide-react';
 import {
     useGetAccountBalanceStatisticsApiV1StatisticBalanceGet,
     useGetBudgetUsageStatisticsApiV1StatisticBudgetGet,
@@ -37,6 +39,8 @@ import {
     XAxis,
     YAxis
 } from 'recharts';
+import {AXIOS_INSTANCE} from "../api/axios-instance";
+import {storage} from "../utils/storage";
 
 // Helper functions
 const currencyFormatter = (value: number | string) => {
@@ -63,8 +67,7 @@ const AccountBalanceChart: React.FC = () => {
     ).sort((a, b) => parseISO(a).getTime() - parseISO(b).getTime());
 
     const merged = allDates.map(d => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const row: Record<string, any> = {date: d};
+        const row: Record<string, string | number | null> = {date: d};
         const current = parseISO(d);
         stats.forEach(s => {
             const point = s.history.find(h => h.date === d);
@@ -118,7 +121,7 @@ const AccountBalanceChart: React.FC = () => {
                                 return (
                                     <Paper sx={{p: 1.5, border: '1px solid', borderColor: 'divider', boxShadow: 3}}>
                                         <Typography variant="body2" sx={{mb: 1, fontWeight: 'bold'}}>
-                                            {dateFormatter(label)}
+                                            {dateFormatter(String(label ?? ''))}
                                         </Typography>
                                         {filteredPayload.map((entry, index) => (
                                             <Box key={`item-${index}`}
@@ -213,10 +216,8 @@ const CategorySpendChart: React.FC = () => {
                     <XAxis type="number" tickFormatter={(v) => `${v}`}/>
                     <YAxis dataKey="name" type="category" width={100}/>
                     <Tooltip formatter={(v, n, props) => {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        const isTotal = (props as any)?.dataKey === 'diff' || n === 'diff' || n === totalLabel;
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        if (isTotal) return [currencyFormatter((props as any).payload.total_orig), totalLabel];
+                        const isTotal = props?.dataKey === 'diff' || n === 'diff' || n === totalLabel;
+                        if (isTotal) return [currencyFormatter((props?.payload as { total_orig?: number })?.total_orig ?? 0), totalLabel];
                         return [currencyFormatter(v as number), currentUserName];
                     }}/>
                     <Legend/>
@@ -352,7 +353,7 @@ const BudgetUsageChart: React.FC = () => {
                                 outerRadius={80}
                                 paddingAngle={5}
                                 dataKey="value"
-                                label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                label={({name, percent}) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                             />
                             <Tooltip formatter={(v) => currencyFormatter(v as number)}/>
                             <Legend/>
@@ -382,12 +383,45 @@ const BudgetUsageChart: React.FC = () => {
 const StatisticsPage: React.FC = () => {
     const {t} = useTranslation();
 
+    const handleExportPdf = async () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth() + 1;
+
+        try {
+            const response = await AXIOS_INSTANCE.get(`/api/v1/exports/monthly-report.pdf`, {
+                params: { year, month },
+                responseType: 'blob',
+                headers: {
+                    Authorization: `Bearer ${storage.getToken()}`
+                }
+            });
+
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `report-${year}-${month.toString().padStart(2, '0')}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            console.error('Export failed', error);
+        }
+    };
+
     return (
         <Container maxWidth="lg" sx={{py: 2}}>
             <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4}}>
                 <Typography variant="h4" sx={{fontWeight: 'bold', color: 'text.primary'}}>
                     {t('statistics.title')}
                 </Typography>
+                <Button
+                    variant="outlined"
+                    startIcon={<FileText size={18} />}
+                    onClick={handleExportPdf}
+                >
+                    {t('statistics.export_pdf')}
+                </Button>
             </Box>
 
             <Grid container spacing={3} sx={{mb: 4}}>

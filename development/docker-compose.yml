@@ -1,0 +1,19 @@
+services:
+  database:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: piggy
+      POSTGRES_PASSWORD: LOCAL_PW
+      POSTGRES_DB: piggy_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db:/var/lib/postgresql
+
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    volumes:
+      - ./mailpit:/data

@@ -8,7 +8,6 @@ import {
     Card,
     CardContent,
     Checkbox,
-    CircularProgress,
     Container,
     Dialog,
     DialogActions,
@@ -53,6 +52,7 @@ import {
     X
 } from 'lucide-react';
 import {useTranslation} from 'react-i18next';
+import {keyframes} from '@emotion/react';
 import {useGreeting} from '../hooks/useGreeting';
 
 import {formatCurrency, formatDate} from '../utils/format';
@@ -92,6 +92,20 @@ import {
 } from '../api/piggy';
 
 import TransactionForm from '../components/TransactionForm';
+
+const coinFall = keyframes`
+  0%   { transform: translateY(0px);  opacity: 0; }
+  8%   { opacity: 1; }
+  24%  { transform: translateY(20px); opacity: 1; }
+  32%  { transform: translateY(32px); opacity: 0; }
+  100% { transform: translateY(32px); opacity: 0; }
+`;
+
+const COIN_POSITIONS = [
+    {left: '42%', delay: '0s'},
+    {left: '46%', delay: '0.7s'},
+    {left: '38%', delay: '1.4s'},
+];
 
 const DashboardPage: React.FC = () => {
     const {t} = useTranslation();
@@ -208,8 +222,8 @@ const DashboardPage: React.FC = () => {
         {
             query: {
                 enabled: !!syncTaskId,
-                refetchInterval: (data) => {
-                    const status = data?.status;
+                refetchInterval: (query) => {
+                    const status = query.state.data?.status;
                     if (status === SyncTaskStatus.COMPLETED || status === SyncTaskStatus.FAILED) {
                         return false;
                     }
@@ -535,8 +549,6 @@ const DashboardPage: React.FC = () => {
         return <LinearProgress/>;
     }
 
-    console.debug('Loaded budgets:', dashboardData?.budgets);
-
     const formatTxDate = (dateStr: string) => formatDate(dateStr, t);
 
     return (
@@ -658,7 +670,7 @@ const DashboardPage: React.FC = () => {
                                         tx.type === TransactionType.Transfer ? ArrowRight :
                                             ArrowDownRight;
 
-                                    const iconColorKey = tx.type === TransactionType.Income ? 'success' :
+                                    const iconColorKey: 'success' | 'info' | 'error' = tx.type === TransactionType.Income ? 'success' :
                                         tx.type === TransactionType.Transfer ? 'info' : 'error';
 
                                     return (
@@ -956,10 +968,26 @@ const DashboardPage: React.FC = () => {
                         <Box sx={{display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 2}}>
                             {!syncError ? (
                                 <>
-                                    <Box sx={{position: 'relative'}}>
+                                    <Box sx={{position: 'relative', display: 'inline-block'}}>
+                                        {COIN_POSITIONS.map((coin, i) => (
+                                            <Box
+                                                key={i}
+                                                sx={{
+                                                    position: 'absolute',
+                                                    top: '-24px',
+                                                    left: coin.left,
+                                                    // color: 'warning.main',
+                                                    lineHeight: 0,
+                                                    animation: `${coinFall} 2.1s linear infinite`,
+                                                    animationDelay: coin.delay,
+                                                    animationFillMode: 'both',
+                                                }}
+                                            >
+                                                <Coins size={18}/>
+                                            </Box>
+                                        ))}
                                         <PiggyBank size={128}/>
                                     </Box>
-                                    <CircularProgress/>
                                     <Typography>
                                         {syncStatusData?.status === SyncTaskStatus.AWAITING_AUTHENTICATION
                                             ? t('settings.bank.status.AWAITING_AUTHENTICATION')

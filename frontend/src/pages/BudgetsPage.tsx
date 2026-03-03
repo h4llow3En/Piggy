@@ -508,8 +508,7 @@ const BudgetsPage: React.FC = () => {
                             <Select
                                 value={budgetType}
                                 label={t('budget.type')}
-                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                onChange={(e) => setBudgetType(e.target.value as any)}
+                                onChange={(e) => setBudgetType(e.target.value as 'global' | 'personal')}
                                 disabled={!!editingBudget} // Don't change type after creation
                             >
                                 <MenuItem value="personal">

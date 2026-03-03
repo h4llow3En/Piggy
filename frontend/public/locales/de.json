@@ -109,6 +109,15 @@
       "targetAccount": "Ziel-Konto",
       "category": "Kategorie",
       "type": "Typ",
+      "suggested": {
+        "title": "Vorschläge",
+        "description": "Diese Zahlungen scheinen regelmäßig zu sein.",
+        "accept": "Übernehmen",
+        "ignore": "Ignorieren",
+        "count": "Vorkommen",
+        "lastDate": "Zuletzt",
+        "empty": "Keine Vorschläge verfügbar"
+      },
       "everyXDays": "Alle X Tage",
       "days": "Tage",
       "empty": "Keine wiederkehrenden Zahlungen vorhanden",
@@ -138,7 +147,8 @@
     "budget_wanted_share": "Gewünschte Verteilung",
     "budget_current_share": "Aktuelle Verteilung",
     "budget_current_from": "von insgesamt",
-    "budget_current_diff": "Abweichung von gewünschter Verteilung"
+    "budget_current_diff": "Abweichung von gewünschter Verteilung",
+    "export_pdf": "PDF-Bericht exportieren"
   },
   "budget": {
     "title": "Budgets",

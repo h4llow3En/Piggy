@@ -109,6 +109,15 @@
       "targetAccount": "Target Account",
       "category": "Category",
       "type": "Type",
+      "suggested": {
+        "title": "Suggestions",
+        "description": "These payments appear to be regular.",
+        "accept": "Accept",
+        "ignore": "Ignore",
+        "count": "Occurrences",
+        "lastDate": "Last date",
+        "empty": "No suggestions available"
+      },
       "everyXDays": "Every X Days",
       "days": "Days",
       "empty": "No recurring payments found",
@@ -138,7 +147,8 @@
     "budget_wanted_share": "Wanted share",
     "budget_current_share": "Current share",
     "budget_current_from": "from combined",
-    "budget_current_diff": "Deviation from wanted share"
+    "budget_current_diff": "Deviation from wanted share",
+    "export_pdf": "Export PDF report"
   },
   "budget": {
     "title": "Budgets",
