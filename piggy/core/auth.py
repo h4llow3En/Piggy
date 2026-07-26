@@ -47,7 +47,7 @@ def get_password_hash(password: str) -> str:
 def create_access_token(data: dict) -> str:
     """Create an access token for the given data with optional expiration."""
     return _create_token(
-        data.copy(), timedelta(days=config.ACCESS_TOKEN_EXPIRE_MINUTES), "access"
+        data.copy(), timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES), "access"
     )
 
 
@@ -113,7 +113,8 @@ async def get_current_user(
     try:
         payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.ALGORITHM])
         email: str | None = payload.get("sub")
-        if email is None:
+        # Refresh tokens are long-lived and must not be accepted as bearer tokens
+        if email is None or payload.get("type") != "access":
             raise credentials_exception
         token_data = TokenData(email=email)
     except JWTError as error:

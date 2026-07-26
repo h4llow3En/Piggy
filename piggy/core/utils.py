@@ -56,9 +56,22 @@ async def get_account_or_404(
 async def get_budget_or_404(
     budget_id: uuid.UUID,
     db: AsyncSession,
+    user_id: Optional[uuid.UUID] = None,
 ) -> Budget:
-    """Retrieve a budget by ID."""
-    result = await db.execute(select(Budget).where(Budget.id == budget_id))
+    """
+    Retrieve a budget by ID.
+
+    Passing ``user_id`` restricts the result to budgets the user may modify:
+    global ones (``user_id IS NULL``) and their own personal ones. Reading is
+    intentionally left unrestricted, finances are shared across the household.
+    """
+    query = select(Budget).where(Budget.id == budget_id)
+    if user_id:
+        query = query.where(
+            or_(Budget.user_id.is_(None), Budget.user_id == user_id)
+        )
+
+    result = await db.execute(query)
     budget = result.scalars().first()
     if not budget:
         raise HTTPException(
@@ -131,10 +144,21 @@ def get_next_recurring_payment_occurrence(
                 next_occurrence += relativedelta(weeks=1)
             case RecurringInterval.MONTHLY:
                 next_occurrence += relativedelta(months=1)
+            case RecurringInterval.QUARTERLY:
+                next_occurrence += relativedelta(months=3)
+            case RecurringInterval.SEMI_ANNUALLY:
+                next_occurrence += relativedelta(months=6)
             case RecurringInterval.YEARLY:
                 next_occurrence += relativedelta(years=1)
             case RecurringInterval.DAYS_X:
                 next_occurrence += relativedelta(days=interval_x_days)
+            case _:
+                # Without this the loop would never advance and spin forever,
+                # blocking the event loop for every other request.
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=_("errors.invalid_interval"),
+                )
     return next_occurrence
 
 

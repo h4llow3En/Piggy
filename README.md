@@ -70,6 +70,21 @@ Deploy your personal instance using Docker.
 * **Security Best Practices** Docker images are configured to run as **non-root users**.
 * **Robust Authentication** JWT-based authentication with secure refresh token logic and bcrypt password hashing.
 
+### Shared by Design
+
+Piggy is built for **joint household finances**, and this shapes its permission model. Please take it into account
+when deciding who gets an account:
+
+* **Everyone sees everything.** All activated users of an instance can see the accounts, balances, transactions
+  and statistics of *all* other users. This is intentional and not configurable. It is what makes shared
+  planning, cross-user transfers and household budgets work.
+* **One instance per household.** It follows that an instance belongs to exactly one group of people who
+  genuinely share their finances. Anyone whose finances should stay separate needs their own instance.
+* **Admin-controlled access.** There is no open self-registration: new sign-ups stay inactive until an
+  administrator activates them. That activation is the actual trust decision, so treat it as such.
+* **Budgets** are the one deliberate exception. *Global* budgets are shared and can be edited or deleted by
+  anyone, while *personal* budgets can only be changed by the user they belong to (everyone can still see them).
+
 ---
 
 <p align="center">

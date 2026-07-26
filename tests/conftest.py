@@ -83,6 +83,31 @@ async def test_user(db):
     return user
 
 @pytest_asyncio.fixture
+async def second_user(db):
+    """A second household member, used to verify cross-user rules."""
+    user = User(
+        email="partner@example.com",
+        hashed_password=get_password_hash("password"),
+        name="Partner User",
+        is_active=True,
+        email_verified=True,
+        role=UserRole.USER
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+@pytest_asyncio.fixture
+async def second_user_auth(client, second_user):
+    """Authorization header for the second user, to pass per request."""
+    response = await client.post(
+        "/api/v1/users/login",
+        data={"username": "partner@example.com", "password": "password"},
+    )
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+@pytest_asyncio.fixture
 async def test_admin(db):
     admin = User(
         email="admin@example.com",
