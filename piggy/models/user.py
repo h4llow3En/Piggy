@@ -7,9 +7,22 @@ User models for Piggy application.
 import uuid
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
 
 from piggy.models.database.user import UserRole
+
+# bcrypt refuses anything longer and would raise on hashing. Rejecting is
+# preferable to silently truncating, which would make two different long
+# passwords interchangeable.
+MAX_PASSWORD_BYTES = 72
+
+
+def _validate_password_length(value: Optional[str]) -> Optional[str]:
+    if value is not None and len(value.encode("utf-8")) > MAX_PASSWORD_BYTES:
+        raise ValueError(
+            f"password must not be longer than {MAX_PASSWORD_BYTES} bytes"
+        )
+    return value
 
 
 class UserBase(BaseModel):
@@ -21,12 +34,16 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
 
+    _check_password = field_validator("password")(_validate_password_length)
+
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     name: Optional[str] = None
     password: Optional[str] = None
     additional_config: Optional[str] = None
+
+    _check_password = field_validator("password")(_validate_password_length)
 
 
 class UserUpdateAdmin(UserUpdate):

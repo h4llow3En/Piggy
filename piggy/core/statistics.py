@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import coalesce
 
 from dateutil.relativedelta import relativedelta
-from piggy.core.utils import get_past_transactions_average
+from piggy.core.utils import get_past_transactions_average_per_account
 from piggy.models.database.account import Account
 from piggy.models.database.budget import Budget
 from piggy.models.database.category import Category
@@ -155,6 +155,9 @@ async def balance_statistics(  # pylint: disable=too-many-locals
 
     last_day_of_month = current_date + relativedelta(day=31)
 
+    # One aggregate for all accounts instead of one per account
+    averages = await get_past_transactions_average_per_account(db, current_user)
+
     output = []
     for acc_row in accounts:
         acc = acc_row[0]
@@ -193,9 +196,9 @@ async def balance_statistics(  # pylint: disable=too-many-locals
             d += relativedelta(days=1)
 
         # Add prognosis (forward)
-        avg_daily_change = await get_past_transactions_average(
-            db, current_user, account_ids={acc.id}
-        ) / Decimal(last_day_of_month.day)
+        avg_daily_change = averages.get(acc.id, Decimal("0.00")) / Decimal(
+            last_day_of_month.day
+        )
 
         temp_prognosis_balance = curr_balance
         d = current_date + relativedelta(days=1)

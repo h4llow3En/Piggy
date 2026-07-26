@@ -6,7 +6,7 @@ import io
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,8 +35,8 @@ async def export_transactions(
 
 @router.get("/monthly-report.pdf")
 async def export_monthly_report(
-    year: int,
-    month: int,
+    year: int = Query(..., ge=2000),
+    month: int = Query(..., ge=1, le=12),
     db: AsyncSession = Depends(get_db),
     current_user: UserDB = Depends(get_current_user),
 ):

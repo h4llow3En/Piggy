@@ -70,3 +70,61 @@ async def test_delete_transaction(auth_client):
     
     acc_resp = await auth_client.get(f"/api/v1/accounts/{account_id}")
     assert float(acc_resp.json()["balance"]) == 100.0
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_with_unknown_transfer_target_changes_nothing(auth_client):
+    """
+    A missing transfer target used to surface only after the rows were committed,
+    leaving transactions behind and balances half applied.
+    """
+    acc_resp = await auth_client.post(
+        "/api/v1/accounts/",
+        json={"name": "Atomic Acc", "balance": 500.0, "type": "Credit Card"},
+    )
+    account_id = acc_resp.json()["id"]
+
+    response = await auth_client.post(
+        f"/api/v1/accounts/{account_id}/transactions/bulk",
+        json=[
+            {"description": "Valid", "amount": 10.0, "type": "Expense"},
+            {
+                "description": "Broken transfer",
+                "amount": 20.0,
+                "type": "Transfer",
+                "target_account_id": str(uuid.uuid4()),
+            },
+        ],
+    )
+    assert response.status_code == 404
+
+    acc_resp = await auth_client.get(f"/api/v1/accounts/{account_id}")
+    assert float(acc_resp.json()["balance"]) == 500.0
+
+    tx_resp = await auth_client.get(f"/api/v1/accounts/{account_id}/transactions")
+    assert tx_resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_update_to_transfer_onto_own_account_is_rejected(auth_client):
+    """The guard compared the target account against the transaction id and never fired."""
+    acc_resp = await auth_client.post(
+        "/api/v1/accounts/",
+        json={"name": "Self Transfer Acc", "balance": 100.0, "type": "Credit Card"},
+    )
+    account_id = acc_resp.json()["id"]
+
+    tx_resp = await auth_client.post(
+        f"/api/v1/accounts/{account_id}/transactions",
+        json={"description": "Groceries", "amount": 10.0, "type": "Expense"},
+    )
+    transaction_id = tx_resp.json()["id"]
+
+    response = await auth_client.put(
+        f"/api/v1/accounts/transactions/{transaction_id}",
+        json={"type": "Transfer", "target_account_id": account_id},
+    )
+    assert response.status_code == 400
+
+    acc_resp = await auth_client.get(f"/api/v1/accounts/{account_id}")
+    assert float(acc_resp.json()["balance"]) == 90.0

@@ -16,6 +16,8 @@ from piggy.models.bank import SyncTaskStatus
 class CachedSyncTask:
     task_id: uuid.UUID
     status: SyncTaskStatus
+    # Who started the sync, so results are only handed back to them
+    user_id: Optional[uuid.UUID] = None
     result: Optional[Any] = None
     error: Optional[str] = None
     expires_at: float = field(default_factory=lambda: time.time() + 1800)  # 30 minutes
@@ -25,8 +27,12 @@ class SyncTaskCache:
     def __init__(self):
         self._tasks: Dict[uuid.UUID, CachedSyncTask] = {}
 
-    def create_task(self, task_id: uuid.UUID) -> CachedSyncTask:
-        task = CachedSyncTask(task_id=task_id, status=SyncTaskStatus.PENDING)
+    def create_task(
+        self, task_id: uuid.UUID, user_id: Optional[uuid.UUID] = None
+    ) -> CachedSyncTask:
+        task = CachedSyncTask(
+            task_id=task_id, status=SyncTaskStatus.PENDING, user_id=user_id
+        )
         self._tasks[task_id] = task
         self._cleanup()
         return task

@@ -9,7 +9,7 @@ This module does not persist any model; it is trained on-the-fly from existing l
 
 import re
 import uuid
-from typing import Optional, Iterable
+from typing import Callable, Optional, Iterable
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
@@ -30,12 +30,20 @@ def _normalize(text: str) -> str:
     return text
 
 
-async def suggest_category_id(
-    db: AsyncSession, user_id: uuid.UUID, description: str
-) -> Optional[uuid.UUID]:
+CategoryPredictor = Callable[[str], Optional[uuid.UUID]]
+
+
+async def build_category_classifier(
+    db: AsyncSession, user_id: uuid.UUID
+) -> Optional[CategoryPredictor]:
     """
-    Suggest a category for a transaction description for a given user.
-    Returns a category_id or None if not enough information.
+    Train a category classifier once and return a predictor for it.
+
+    Training loads the user's entire labeled history, so callers that classify
+    more than one description must build the predictor once and reuse it
+    instead of calling :func:`suggest_category_id` per item.
+
+    Returns None if there is nothing to learn from.
     """
     # Fetch user's labeled transactions
     q = (
@@ -48,25 +56,57 @@ async def suggest_category_id(
         .where(AccountDB.user_id == user_id)
     )
 
-    if rows := (await db.execute(q)).all():
-        x = [_normalize(r[0]) for r in rows]
-        y = [str(r[1]) for r in rows]
+    rows = (await db.execute(q)).all()
+    if not rows:
+        return None
 
-        # Try sklearn if available
+    x = [_normalize(r[0]) for r in rows]
+    y = [str(r[1]) for r in rows]
+
+    try:
+        pipe = make_pipeline(TfidfVectorizer(min_df=1), MultinomialNB())
+        pipe.fit(x, y)
+    except Exception:  # pylint: disable=broad-exception-caught
+        return None
+
+    def predict(description: str) -> Optional[uuid.UUID]:
         try:
-            pipe = make_pipeline(TfidfVectorizer(min_df=1), MultinomialNB())
-            pipe.fit(x, y)
             return uuid.UUID(pipe.predict([_normalize(description)])[0])
         except Exception:  # pylint: disable=broad-exception-caught
             return None
-    return None
+
+    return predict
+
+
+async def suggest_category_id(
+    db: AsyncSession, user_id: uuid.UUID, description: str
+) -> Optional[uuid.UUID]:
+    """
+    Suggest a category for a single transaction description.
+
+    Trains a throwaway model, so only use this for one-off lookups.
+    """
+    predictor = await build_category_classifier(db, user_id)
+    return predictor(description) if predictor else None
+
+
+def normalize_iban(iban: Optional[str]) -> Optional[str]:
+    """
+    Normalize an IBAN for comparison.
+
+    Banks report IBANs with or without grouping spaces, so every comparison and
+    every dict lookup has to go through this.
+    """
+    if not iban:
+        return None
+    return iban.replace(" ", "").upper()
 
 
 def is_internal_transfer_candidate(
     partner_iban: Optional[str], known_ibans: Iterable[str]
 ) -> bool:
     """Simple check whether a partner IBAN is one of our known IBANs."""
-    if not partner_iban:
+    p = normalize_iban(partner_iban)
+    if not p:
         return False
-    p = partner_iban.replace(" ", "").upper()
-    return p in {iban.replace(" ", "").upper() for iban in known_ibans}
+    return p in {normalize_iban(iban) for iban in known_ibans}

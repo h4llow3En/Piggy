@@ -1,5 +1,64 @@
+import contextlib
+import signal
 import pytest
 from datetime import date
+
+from piggy.core.utils import get_next_recurring_payment_occurrence
+from piggy.models.database.recurring_payment import RecurringInterval
+
+
+@contextlib.contextmanager
+def time_limit(seconds: int):
+    """
+    Abort after `seconds`, via SIGALRM rather than asyncio.
+
+    A non-terminating interval spins in a synchronous while loop and blocks the
+    event loop itself, so asyncio.wait_for would never get a chance to fire.
+    """
+
+    def _raise(*_):
+        raise TimeoutError("call did not terminate")
+
+    previous = signal.signal(signal.SIGALRM, _raise)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGALRM"), reason="requires POSIX signals")
+@pytest.mark.parametrize("interval", list(RecurringInterval))
+def test_next_occurrence_terminates_for_every_interval(interval):
+    """Quarterly and Semi-Annually had no case and looped forever."""
+    with time_limit(5):
+        result = get_next_recurring_payment_occurrence(
+            date(2024, 1, 1), interval, 30, date(2026, 7, 26)
+        )
+    assert result >= date(2026, 7, 26)
+
+
+@pytest.mark.asyncio
+async def test_dashboard_summary_with_quarterly_payment(auth_client):
+    """End to end guard: a Quarterly payment used to hang /dashboard/summary."""
+    today = date.today()
+    await auth_client.post(
+        "/api/v1/recurring-payments/",
+        json={
+            "name": "Quarterly Insurance",
+            "amount": 120.0,
+            "type": "Expense",
+            "interval": "Quarterly",
+            "start_date": date(today.year - 1, 1, 1).isoformat(),
+        },
+    )
+
+    with time_limit(10):
+        response = await auth_client.get(
+            f"/api/v1/dashboard/summary?month={today.month}&year={today.year}"
+        )
+    assert response.status_code == 200
 
 @pytest.mark.asyncio
 async def test_create_recurring_payment(auth_client):

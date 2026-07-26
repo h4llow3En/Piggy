@@ -176,8 +176,15 @@ class FinTSClient:
         assert self._client is not None, "Client not opened"
 
         # FinTS get_transactions requires a SEPAAccount object, not just an IBAN string.
+        # Compared without grouping spaces, banks are inconsistent about them.
+        def _normalized(value: Optional[str]) -> str:
+            return (value or "").replace(" ", "").upper()
+
         accounts = self._client.get_sepa_accounts()
-        target_account = next((a for a in accounts if a.iban == iban), None)
+        wanted = _normalized(iban)
+        target_account = next(
+            (a for a in accounts if _normalized(a.iban) == wanted), None
+        )
 
         if not target_account:
             logger.error("Account with IBAN %s not found in FinTS session", iban)

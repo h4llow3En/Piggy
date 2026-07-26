@@ -16,6 +16,7 @@ from piggy.core.i18n import _
 from piggy.core.utils import get_category_or_404, get_budget_or_404
 from piggy.models.category import Budget, BudgetCreate, BudgetWithCategory, BudgetUpdate
 from piggy.models.database.budget import Budget as BudgetDB
+from piggy.models.database.user import User as UserDB
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -24,21 +25,26 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 async def create_budget(
     budget_in: BudgetCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
 ):
     """
     Create a new budget.
     If user_id is not set in budget_in, we attempt to create a global budget.
-    If user_id is set, a personal one.
+    If user_id is set, a personal one for the current user.
     """
 
     await get_category_or_404(budget_in.category_id, db)
+
+    # user_id acts as a mode switch only, a personal budget always belongs to
+    # its creator. Anything else would let a client write in someone else's name.
+    owner_id = current_user.id if budget_in.user_id else None
 
     result = await db.execute(
         select(BudgetDB).where(BudgetDB.category_id == budget_in.category_id)
     )
     existing_budgets = result.scalars().all()
 
-    is_global_request = budget_in.user_id is None
+    is_global_request = owner_id is None
 
     if is_global_request:
         if existing_budgets:
@@ -53,13 +59,13 @@ async def create_budget(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=_("errors.budget_already_exists"),
                 )
-            if b.user_id == budget_in.user_id:
+            if b.user_id == owner_id:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=_("errors.budget_already_exists"),
                 )
 
-    budget = BudgetDB(**budget_in.model_dump())
+    budget = BudgetDB(**budget_in.model_dump(exclude={"user_id"}), user_id=owner_id)
     db.add(budget)
     await db.commit()
     await db.refresh(budget)
@@ -91,11 +97,14 @@ async def update_budget(
     budget_id: uuid.UUID,
     budget_in: BudgetUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
 ):
-    """Update a budget by id"""
-    budget = await get_budget_or_404(budget_id, db)
+    """Update a budget by id. Personal budgets may only be changed by their owner."""
+    budget = await get_budget_or_404(budget_id, db, current_user.id)
 
     update_data = budget_in.model_dump(exclude_unset=True)
+    # Reassigning ownership would circumvent the check above
+    update_data.pop("user_id", None)
     for field, value in update_data.items():
         setattr(budget, field, value)
 
@@ -110,9 +119,10 @@ async def update_budget(
 async def delete_budget(
     budget_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
 ):
-    """Delete a budget by id"""
-    budget = await get_budget_or_404(budget_id, db)
+    """Delete a budget by id. Personal budgets may only be deleted by their owner."""
+    budget = await get_budget_or_404(budget_id, db, current_user.id)
 
     await db.delete(budget)
     await db.commit()

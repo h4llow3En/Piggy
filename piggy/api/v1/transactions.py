@@ -63,6 +63,8 @@ async def _create_transactions_internal(
     # Verify account ownership once
     await get_account_or_404(account_id, db, user_id)
 
+    # Validate everything before adding anything, so a rejected item cannot
+    # leave earlier ones behind in the session
     for transaction_in in transactions_in:
         if transaction_in.type == TransactionType.TRANSFER:
             if not transaction_in.target_account_id:
@@ -75,30 +77,35 @@ async def _create_transactions_internal(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=_("errors.transfer_same_account"),
                 )
+            await get_account_or_404(transaction_in.target_account_id, db)
 
-        transaction_data = transaction_in.model_dump()
-        if transaction_data.get("timestamp") is None:
-            transaction_data.pop("timestamp", None)
-
-        transaction = TransactionDB(**transaction_data, account_id=account_id)
-
-        if transaction.category_id:
+        if transaction_in.category_id:
             res = await db.execute(
-                select(CategoryDB).where(CategoryDB.id == transaction.category_id)
+                select(CategoryDB).where(CategoryDB.id == transaction_in.category_id)
             )
             if not res.scalars().first():
                 raise HTTPException(
                     status_code=400, detail=_("errors.category_not_found")
                 )
 
+    for transaction_in in transactions_in:
+        transaction_data = transaction_in.model_dump()
+        if transaction_data.get("timestamp") is None:
+            transaction_data.pop("timestamp", None)
+
+        transaction = TransactionDB(**transaction_data, account_id=account_id)
         db.add(transaction)
         created_transactions.append(transaction)
 
+    # Rows and balances are committed together, so a failure cannot leave
+    # balances that disagree with the transactions
+    await db.flush()
+    for tx in created_transactions:
+        await apply_transaction_effect(tx, user_id, db)
     await db.commit()
 
     for tx in created_transactions:
         await db.refresh(tx)
-        await apply_transaction_effect(tx, user_id, db)
 
     return created_transactions
 
@@ -201,19 +208,36 @@ async def update_transaction(
     current_user: UserDB = Depends(get_current_user),
 ):
     """Updates a transaction"""
+    transaction = await read_transaction(transaction_id, db, current_user)
+
     if transaction_in.type == TransactionType.TRANSFER:
         if not transaction_in.target_account_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=_("errors.transfer_target_required"),
             )
-        if transaction_in.target_account_id == transaction_id:
+        # Compared against the source account, not the transaction id
+        if transaction_in.target_account_id == transaction.account_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=_("errors.transfer_same_account"),
             )
-    transaction = await read_transaction(transaction_id, db, current_user)
 
+    if transaction_in.target_account_id is not None:
+        await get_account_or_404(transaction_in.target_account_id, db)
+
+    if transaction_in.category_id is not None:
+        res = await db.execute(
+            select(CategoryDB).where(CategoryDB.id == transaction_in.category_id)
+        )
+        if not res.scalars().first():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=_("errors.category_not_found"),
+            )
+
+    # Everything is validated by now, so the balance can be rolled back to the
+    # pre-transaction state, the row updated and the new effect applied in one go
     await apply_transaction_effect(transaction, current_user.id, db, revert=True)
 
     if transaction_in.amount is not None:
@@ -226,15 +250,6 @@ async def update_transaction(
         transaction.description = transaction_in.description
 
     if transaction_in.category_id is not None:
-
-        res = await db.execute(
-            select(CategoryDB).where(CategoryDB.id == transaction_in.category_id)
-        )
-        if not res.scalars().first():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=_("errors.category_not_found"),
-            )
         transaction.category_id = transaction_in.category_id
 
     if transaction_in.target_account_id is not None:
@@ -243,9 +258,9 @@ async def update_transaction(
     if transaction_in.timestamp is not None:
         transaction.timestamp = transaction_in.timestamp
 
+    await apply_transaction_effect(transaction, current_user.id, db)
     await db.commit()
     await db.refresh(transaction)
-    await apply_transaction_effect(transaction, current_user.id, db)
     return transaction
 
 
@@ -262,4 +277,5 @@ async def delete_transaction(
     await apply_transaction_effect(transaction, current_user.id, db, revert=True)
 
     await db.delete(transaction)
+    # Balance rollback and deletion land in the same commit
     await db.commit()
