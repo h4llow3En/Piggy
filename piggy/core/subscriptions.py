@@ -113,7 +113,7 @@ async def detect_potential_recurring_payments(  # pylint: disable=too-many-local
 
     query = (
         select(Transaction)
-        .join(Account)
+        .join(Account, Account.id == Transaction.account_id)
         .where(
             and_(
                 Account.user_id == user_id,

@@ -94,6 +94,7 @@ async def create_recurring_payment(
     payment = RecurringPaymentDB(**payment_in.model_dump(), user_id=current_user.id)
     db.add(payment)
     await db.commit()
+    await rebuild_user(db, current_user.id)
     await db.refresh(payment)
     return payment
 

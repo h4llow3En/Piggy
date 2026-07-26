@@ -404,6 +404,7 @@ const StatisticsPage: React.FC = () => {
             document.body.appendChild(link);
             link.click();
             link.remove();
+            window.URL.revokeObjectURL(url);
         } catch (error) {
             console.error('Export failed', error);
         }

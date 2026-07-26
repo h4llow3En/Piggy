@@ -87,6 +87,12 @@ const RecurringPaymentsPage: React.FC = () => {
                 case RecurringInterval.Monthly:
                     nextDate = addMonths(nextDate, 1);
                     break;
+                case RecurringInterval.Quarterly:
+                    nextDate = addMonths(nextDate, 3);
+                    break;
+                case RecurringInterval['Semi-Annually']:
+                    nextDate = addMonths(nextDate, 6);
+                    break;
                 case RecurringInterval.Yearly:
                     nextDate = addYears(nextDate, 1);
                     break;
@@ -167,10 +173,11 @@ const RecurringPaymentsPage: React.FC = () => {
                 setFormData({
                     name: payment.name,
                     amount: Math.abs(parseFloat(payment.amount)).toFixed(2),
-                    type: parseFloat(payment.amount) > 0 ? TransactionType.Income : TransactionType.Expense,
+                    // Detection only scans expenses, so a suggestion is always an expense
+                    type: TransactionType.Expense,
                     interval: payment.interval,
                     interval_x_days: 30, // Default for suggestions as backend doesn't provide interval_x_days yet
-                    start_date: payment.last_date,
+                    start_date: format(parseISO(payment.last_date), 'yyyy-MM-dd'),
                     is_subscription: true,
                     account_id: '',
                     target_account_id: '',
@@ -344,9 +351,9 @@ const RecurringPaymentsPage: React.FC = () => {
                                         <Box sx={{textAlign: 'right', mr: 1}}>
                                             <Typography variant="subtitle1" sx={{
                                                 fontWeight: 'bold',
-                                                color: parseFloat(suggestion.amount) > 0 ? 'success.main' : 'text.primary'
+                                                color: 'text.primary'
                                             }}>
-                                                {parseFloat(suggestion.amount) > 0 ? '+' : ''}{formatCurrency(suggestion.amount)}
+                                                -{formatCurrency(suggestion.amount)}
                                             </Typography>
                                             <Typography variant="caption" color="text.secondary">
                                                 {t('dashboard.recurring.suggested.lastDate')}: {format(parseISO(suggestion.last_date), 'dd.MM.yy')}

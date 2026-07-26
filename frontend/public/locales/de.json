@@ -127,6 +127,8 @@
         "Daily": "Täglich",
         "Weekly": "Wöchentlich",
         "Monthly": "Monatlich",
+        "Quarterly": "Vierteljährlich",
+        "Semi-Annually": "Halbjährlich",
         "Yearly": "Jährlich",
         "Every X Days": "Alle X Tage"
       }

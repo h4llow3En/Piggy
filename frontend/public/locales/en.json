@@ -127,6 +127,8 @@
         "Daily": "Daily",
         "Weekly": "Weekly",
         "Monthly": "Monthly",
+        "Quarterly": "Quarterly",
+        "Semi-Annually": "Semi-Annually",
         "Yearly": "Yearly",
         "Every X Days": "Every X Days"
       }
