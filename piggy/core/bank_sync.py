@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from piggy.core.bank.fints_client import FinTSClient, FinTSNotAvailable
 from piggy.core.bank_sync_cache import sync_task_cache
 from piggy.core.categorization import (
+    CategoryPredictor,
+    build_category_classifier,
     suggest_category_id,
     is_internal_transfer_candidate,
     normalize_iban,
@@ -106,14 +108,21 @@ async def _is_potential_duplicate(
     return bool((await db.execute(stmt)).scalar())
 
 
-async def _get_internal_accounts(db: AsyncSession) -> dict:
+async def _get_internal_accounts(
+    db: AsyncSession, user_id: Optional[uuid.UUID] = None
+) -> dict:
     """
     Fetch internal accounts as a dict {normalized_iban: account_id}.
 
     Keyed by the normalized IBAN so lookups match what
-    ``is_internal_transfer_candidate`` compares against.
+    ``is_internal_transfer_candidate`` compares against. Without ``user_id`` this
+    spans all users on purpose, that is what makes transfers between household
+    members resolve to a target account.
     """
-    result = await db.execute(select(Account.id, Account.iban))
+    query = select(Account.id, Account.iban)
+    if user_id:
+        query = query.where(Account.user_id == user_id)
+    result = await db.execute(query)
     return {
         normalize_iban(iban): acc_id
         for acc_id, iban in [(r[0], r[1]) for r in result.all()]
@@ -128,6 +137,7 @@ async def _process_transaction(  # pylint: disable=too-many-arguments,too-many-p
     known_ibans: List[str],
     internal_accounts: dict,
     db: AsyncSession,
+    predict_category: Optional[CategoryPredictor] = None,
 ) -> Optional[BankTransactionPreview]:
     """Process a single FinTS transaction and return a preview item."""
     ts = datetime.combine(it.booking_date, datetime.min.time(), tzinfo=timezone.utc)
@@ -152,8 +162,12 @@ async def _process_transaction(  # pylint: disable=too-many-arguments,too-many-p
     # suggestions
     category_id = None
     if ttype != TransactionType.TRANSFER:
-        cat = await suggest_category_id(db, user_id=user_id, description=description)
-        category_id = cat if cat else None
+        if predict_category is not None:
+            category_id = predict_category(description)
+        else:
+            category_id = await suggest_category_id(
+                db, user_id=user_id, description=description
+            )
 
     is_dup = await _is_potential_duplicate(db, account_id, ts, amount)
 
@@ -167,6 +181,44 @@ async def _process_transaction(  # pylint: disable=too-many-arguments,too-many-p
         timestamp=ts,
         is_potential_duplicate=is_dup,
     )
+
+
+async def _collect_previews(
+    client: FinTSClient,
+    conn: BankConnection,
+    since: date,
+    until: date,
+    db: AsyncSession,
+) -> List[BankTransactionPreview]:
+    """Fetch and map the bookings of every account belonging to the connection owner."""
+    # Matching stays global: a payment to another household member's account
+    # is a transfer, not an expense. Only the accounts we actually fetch from
+    # are limited to the connection owner, the bank cannot serve the others.
+    internal_accounts = await _get_internal_accounts(db)
+    known_ibans = await _get_known_ibans(db)
+    own_accounts = await _get_internal_accounts(db, user_id=conn.user_id)
+
+    # Trained once per sync, not once per booking
+    predict_category = await build_category_classifier(db, conn.user_id)
+
+    previews: List[BankTransactionPreview] = []
+    for iban, account_id in own_accounts.items():
+        try:
+            for it in client.fetch_transactions(iban, since, until):
+                if preview := await _process_transaction(
+                    it,
+                    account_id,
+                    conn.user_id,
+                    known_ibans,
+                    internal_accounts,
+                    db,
+                    predict_category,
+                ):
+                    previews.append(preview)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception("Failed to fetch transactions for account %s", iban)
+            continue
+    return previews
 
 
 async def preview_connection(
@@ -210,20 +262,7 @@ async def preview_connection(
         return []
 
     try:
-        internal_accounts = await _get_internal_accounts(db)
-        known_ibans = await _get_known_ibans(db)
-
-        previews: List[BankTransactionPreview] = []
-        for iban, account_id in internal_accounts.items():
-            try:
-                for it in client.fetch_transactions(iban, since, until):
-                    if preview := await _process_transaction(
-                        it, account_id, conn.user_id, known_ibans, internal_accounts, db
-                    ):
-                        previews.append(preview)
-            except Exception:  # pylint: disable=broad-exception-caught
-                continue
-        return previews
+        return await _collect_previews(client, conn, since, until, db)
     finally:
         try:
             client.close()

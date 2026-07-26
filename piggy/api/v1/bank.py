@@ -137,7 +137,7 @@ async def sync(
         )
 
     task_id = uuid.uuid4()
-    sync_task_cache.create_task(task_id)
+    sync_task_cache.create_task(task_id, current_user.id)
 
     background_tasks.add_task(run_sync_task, task_id, obj.id, req.pin, req.since)
 
@@ -151,12 +151,14 @@ async def sync(
 )
 async def get_sync_status(
     task_id: uuid.UUID,
+    current_user: UserDB = Depends(get_current_user),
 ):
     """
     Get the status and results of a bank sync task.
     """
     task = sync_task_cache.get_task(task_id)
-    if not task:
+    # A sync result contains raw bank data, so it goes back only to its owner
+    if not task or (task.user_id and task.user_id != current_user.id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=_("errors.not_found")
         )

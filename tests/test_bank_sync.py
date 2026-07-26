@@ -72,3 +72,24 @@ async def test_spaced_partner_iban_resolves_to_target_account(db):
     assert preview is not None
     assert preview.type == TransactionType.TRANSFER
     assert preview.target_account_id == partner.id
+
+
+@pytest.mark.asyncio
+async def test_sync_status_is_only_returned_to_its_owner(auth_client, second_user_auth, test_user):
+    """A sync result holds raw bank data and must not be readable by task id alone."""
+    import uuid as _uuid
+
+    from piggy.core.bank_sync_cache import sync_task_cache
+    from piggy.models.bank import SyncTaskStatus
+
+    task_id = _uuid.uuid4()
+    sync_task_cache.create_task(task_id, test_user.id)
+    sync_task_cache.update_task(task_id, SyncTaskStatus.COMPLETED, result=[])
+
+    own = await auth_client.get(f"/api/v1/bank/sync/status/{task_id}")
+    assert own.status_code == 200
+
+    other = await auth_client.get(
+        f"/api/v1/bank/sync/status/{task_id}", headers=second_user_auth
+    )
+    assert other.status_code == 404

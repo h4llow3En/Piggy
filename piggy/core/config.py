@@ -33,7 +33,10 @@ class Config(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 28
 
-    BACKEND_CORS_ORIGINS: List[str] = ["*"]
+    # Empty by default: the frontend is served same-origin behind a reverse
+    # proxy, so no cross-origin access is needed unless it is opted into.
+    # See .env.example for a development setup.
+    BACKEND_CORS_ORIGINS: List[str] = []
 
     FINTS_PRODUCT_ID: str = "6151256F3D4F9975B877BD4A2"
 

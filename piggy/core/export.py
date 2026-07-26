@@ -11,7 +11,7 @@ from typing import Optional
 
 from dateutil.relativedelta import relativedelta
 from fpdf import FPDF, XPos, YPos
-from sqlalchemy import select, and_, func, case
+from sqlalchemy import select, and_, func, case, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -65,6 +65,18 @@ async def export_transactions_csv(
         )
 
     return output.getvalue()
+
+
+def _pdf_safe(text: Optional[str]) -> str:
+    """
+    Make text printable with fpdf2's built-in fonts.
+
+    Those only cover cp1252, so anything outside it (emoji, Cyrillic, ...) that
+    made it into a description would otherwise abort the whole export.
+    """
+    if text is None:
+        return ""
+    return str(text).encode("cp1252", errors="replace").decode("cp1252")
 
 
 async def generate_monthly_pdf_report(  # pylint: disable=too-many-statements,too-many-locals
@@ -149,7 +161,8 @@ async def generate_monthly_pdf_report(  # pylint: disable=too-many-statements,to
         .outerjoin(
             actual_spent_subquery, actual_spent_subquery.c.category_id == Category.id
         )
-        .where(Budget.user_id == user_id)
+        # Global budgets (user_id IS NULL) are shared and belong in the report too
+        .where(or_(Budget.user_id == user_id, Budget.user_id.is_(None)))
     )
     budgets_res = list((await db.execute(budget_query)).all())
 
@@ -263,7 +276,7 @@ async def generate_monthly_pdf_report(  # pylint: disable=too-many-statements,to
 
         pdf.set_font(font_name, "", 10)
         for cat_name, spent in top_cats:
-            pdf.cell(140, 8, cat_name, 1)
+            pdf.cell(140, 8, _pdf_safe(cat_name), 1)
             pdf.cell(
                 50,
                 8,
@@ -291,7 +304,7 @@ async def generate_monthly_pdf_report(  # pylint: disable=too-many-statements,to
 
         pdf.set_font(font_name, "", 10)
         for b_name, b_amount, b_actual in budgets_res:
-            pdf.cell(80, 8, b_name, 1)
+            pdf.cell(80, 8, _pdf_safe(b_name), 1)
             pdf.cell(40, 8, f"{b_amount:,.2f} EUR", 1, 0, "R")
             pdf.cell(40, 8, f"{b_actual:,.2f} EUR", 1, 0, "R")
             if b_actual > b_amount:
@@ -324,7 +337,10 @@ async def generate_monthly_pdf_report(  # pylint: disable=too-many-statements,to
         pdf.set_font(font_name, "", 10)
         for t_date, t_desc, t_amount in large_txs:
             pdf.cell(30, 8, t_date.strftime("%d.%m.%Y"), 1)
-            pdf.cell(120, 8, (t_desc[:60] + "..") if len(t_desc) > 60 else t_desc, 1)
+            safe_desc = _pdf_safe(t_desc)
+            pdf.cell(
+                120, 8, (safe_desc[:60] + "..") if len(safe_desc) > 60 else safe_desc, 1
+            )
             pdf.cell(
                 40,
                 8,
@@ -353,7 +369,7 @@ async def generate_monthly_pdf_report(  # pylint: disable=too-many-statements,to
 
         pdf.set_font(font_name, "", 10)
         for s_name, s_amount, s_interval in recurring_payments:
-            pdf.cell(110, 8, s_name, 1)
+            pdf.cell(110, 8, _pdf_safe(s_name), 1)
             pdf.cell(40, 8, str(s_interval), 1)
             pdf.cell(
                 40,

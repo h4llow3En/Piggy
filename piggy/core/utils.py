@@ -271,6 +271,106 @@ async def calculate_balance(  # pylint: disable=too-many-arguments, too-many-pos
     return balance, monthly_income, monthly_expenses, monthly_balance, prognosed_balance
 
 
+def _recurring_payment_exclusion(current_user: User):
+    """
+    Transactions that look like an already tracked recurring payment.
+
+    Those are budgeted separately, so they must not feed into the variable
+    spending average.
+    """
+    return ~exists().where(
+        and_(
+            RecurringPaymentDB.user_id == current_user.id,
+            TransactionDB.type == RecurringPaymentDB.type,
+            or_(
+                func.lower(TransactionDB.description).contains(
+                    func.lower(RecurringPaymentDB.name)
+                ),
+                func.lower(RecurringPaymentDB.name).contains(
+                    func.lower(TransactionDB.description)
+                ),
+            ),
+            func.abs(TransactionDB.amount - RecurringPaymentDB.amount)
+            <= (RecurringPaymentDB.amount * Decimal("0.10")),
+        )
+    )
+
+
+async def get_past_transactions_average_per_account(
+    db: AsyncSession,
+    current_user: User,
+    start_date: Optional[date] = None,
+) -> dict[UUID, Decimal]:
+    """
+    Per-account variant of :func:`get_past_transactions_average`.
+
+    Computes the six month average for every account in a single query, so
+    callers rendering many accounts do not issue one aggregate per account.
+    Accounts without matching transactions are absent from the result.
+    """
+    start_date = start_date or date.today()
+    start_date_prognosis = start_date - relativedelta(months=6)
+
+    window = (TransactionDB.timestamp >= start_date_prognosis) & (
+        TransactionDB.timestamp < start_date
+    )
+    exclusion = _recurring_payment_exclusion(current_user)
+
+    # The account as the source of the transaction
+    source_rows = select(
+        TransactionDB.account_id.label("account_id"),
+        extract("month", TransactionDB.timestamp).label("month"),
+        extract("year", TransactionDB.timestamp).label("year"),
+        case(
+            (TransactionDB.type == TransactionType.INCOME, TransactionDB.amount),
+            (TransactionDB.type == TransactionType.EXPENSE, -TransactionDB.amount),
+            (TransactionDB.type == TransactionType.TRANSFER, -TransactionDB.amount),
+            else_=Decimal("0.00"),
+        ).label("value"),
+    ).where(window, exclusion)
+
+    # The account as the target, which only transfers can have
+    target_rows = select(
+        TransactionDB.target_account_id.label("account_id"),
+        extract("month", TransactionDB.timestamp).label("month"),
+        extract("year", TransactionDB.timestamp).label("year"),
+        TransactionDB.amount.label("value"),
+    ).where(
+        window,
+        exclusion,
+        TransactionDB.type == TransactionType.TRANSFER,
+        TransactionDB.target_account_id.is_not(None),
+    )
+
+    contributions = source_rows.union_all(target_rows).subquery()
+
+    monthly = (
+        select(
+            contributions.c.account_id.label("account_id"),
+            func.sum(contributions.c.value).label("monthly_total"),
+        )
+        .group_by(
+            contributions.c.account_id,
+            contributions.c.month,
+            contributions.c.year,
+        )
+        .subquery()
+    )
+
+    # The mean over the monthly totals, matching sum / number of months
+    averages = select(
+        monthly.c.account_id,
+        func.avg(monthly.c.monthly_total).label("average"),
+    ).group_by(monthly.c.account_id)
+
+    result = await db.execute(averages)
+    return {
+        row.account_id: Decimal(row.average or 0)
+        for row in result.all()
+        if row.account_id is not None
+    }
+
+
 async def get_past_transactions_average(
     db: AsyncSession,
     current_user: User,

@@ -20,6 +20,27 @@ AXIOS_INSTANCE.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
+// A single in-flight refresh shared by all requests that hit a 401 at the same
+// time, otherwise a dashboard full of parallel queries fires one refresh each.
+let refreshPromise: Promise<string> | null = null;
+
+const refreshAccessToken = (refreshToken: string): Promise<string> => {
+    if (!refreshPromise) {
+        refreshPromise = axios
+            .post(`${AXIOS_INSTANCE.defaults.baseURL || ''}/api/v1/users/refresh-token`, {
+                refresh_token: refreshToken
+            })
+            .then(({data}) => {
+                storage.setTokens(data.access_token, data.refresh_token, storage.isRemembered());
+                return data.access_token as string;
+            })
+            .finally(() => {
+                refreshPromise = null;
+            });
+    }
+    return refreshPromise;
+};
+
 // Response interceptor to handle token refresh
 AXIOS_INSTANCE.interceptors.response.use(
     (response) => response,
@@ -40,18 +61,11 @@ AXIOS_INSTANCE.interceptors.response.use(
 
             if (refreshToken) {
                 try {
-                    // We use a separate axios object for the refresh to avoid interceptor loops
-                    const response = await axios.post(`${AXIOS_INSTANCE.defaults.baseURL || ''}/api/v1/users/refresh-token`, {
-                        refresh_token: refreshToken
-                    });
-
-                    const {access_token, refresh_token: newRefreshToken} = response.data;
-
-                    // Store the new tokens
-                    storage.setTokens(access_token, newRefreshToken, storage.isRemembered());
+                    // Uses a separate axios object for the refresh to avoid interceptor loops
+                    const accessToken = await refreshAccessToken(refreshToken);
 
                     // Update the header for the original request
-                    originalRequest.headers.Authorization = `Bearer ${access_token}`;
+                    originalRequest.headers.Authorization = `Bearer ${accessToken}`;
 
                     // Repeat the original request
                     return AXIOS_INSTANCE(originalRequest);
