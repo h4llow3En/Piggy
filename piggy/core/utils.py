@@ -457,7 +457,13 @@ async def apply_transaction_effect(
     db: AsyncSession,
     revert: bool = False,
 ):
-    """apply transaction effect to account balance"""
+    """
+    Apply a transaction's effect to the account balances.
+
+    This does not commit. The caller is responsible for committing the rows and
+    the resulting balances together, otherwise a failure in between leaves
+    balances that no longer match the transactions.
+    """
     account = await get_account_or_404(transaction.account_id, db, user_id)
     amount = transaction.amount if not revert else -transaction.amount
     if transaction.type == TransactionType.INCOME:
@@ -467,6 +473,6 @@ async def apply_transaction_effect(
     elif transaction.type == TransactionType.TRANSFER:
         account.balance -= amount
         if transaction.target_account_id:
+            # Transfer targets may belong to another household member
             target_account = await get_account_or_404(transaction.target_account_id, db)
             target_account.balance += amount
-    await db.commit()

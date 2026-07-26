@@ -53,9 +53,10 @@ async def login(
     result = await db.execute(select(UserDB).where(UserDB.email == form_data.username))
     user = result.scalars().first()
 
-    password_to_verify = form_data.password[:72]
-
-    if not user or not verify_password(password_to_verify, user.hashed_password):
+    # No truncation here: registration rejects anything over the bcrypt limit,
+    # so an over-long input simply cannot be a valid password. verify_password
+    # turns the resulting bcrypt error into a plain mismatch.
+    if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=_("errors.incorrect_credentials"),

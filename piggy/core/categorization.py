@@ -62,11 +62,23 @@ async def suggest_category_id(
     return None
 
 
+def normalize_iban(iban: Optional[str]) -> Optional[str]:
+    """
+    Normalize an IBAN for comparison.
+
+    Banks report IBANs with or without grouping spaces, so every comparison and
+    every dict lookup has to go through this.
+    """
+    if not iban:
+        return None
+    return iban.replace(" ", "").upper()
+
+
 def is_internal_transfer_candidate(
     partner_iban: Optional[str], known_ibans: Iterable[str]
 ) -> bool:
     """Simple check whether a partner IBAN is one of our known IBANs."""
-    if not partner_iban:
+    p = normalize_iban(partner_iban)
+    if not p:
         return False
-    p = partner_iban.replace(" ", "").upper()
-    return p in {iban.replace(" ", "").upper() for iban in known_ibans}
+    return p in {normalize_iban(iban) for iban in known_ibans}

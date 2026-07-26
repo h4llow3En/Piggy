@@ -23,6 +23,7 @@ from piggy.core.bank_sync_cache import sync_task_cache
 from piggy.core.categorization import (
     suggest_category_id,
     is_internal_transfer_candidate,
+    normalize_iban,
 )
 from piggy.core.config import config
 from piggy.core.database import async_session
@@ -106,10 +107,17 @@ async def _is_potential_duplicate(
 
 
 async def _get_internal_accounts(db: AsyncSession) -> dict:
-    """Fetch and format internal accounts as a dict {iban: account_id}."""
+    """
+    Fetch internal accounts as a dict {normalized_iban: account_id}.
+
+    Keyed by the normalized IBAN so lookups match what
+    ``is_internal_transfer_candidate`` compares against.
+    """
     result = await db.execute(select(Account.id, Account.iban))
     return {
-        iban: acc_id for acc_id, iban in [(r[0], r[1]) for r in result.all()] if iban
+        normalize_iban(iban): acc_id
+        for acc_id, iban in [(r[0], r[1]) for r in result.all()]
+        if iban
     }
 
 
@@ -132,8 +140,7 @@ async def _process_transaction(  # pylint: disable=too-many-arguments,too-many-p
         if ttype == TransactionType.INCOME:
             return None
         ttype = TransactionType.TRANSFER
-        if it.partner_iban in internal_accounts:
-            target_account_id = internal_accounts[it.partner_iban]
+        target_account_id = internal_accounts.get(normalize_iban(it.partner_iban))
 
     # Update description for expenses
     description: str = it.description or ""
