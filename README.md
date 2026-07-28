@@ -36,6 +36,19 @@ control.
   localization in **English** and **German**.
 * **Theming** Native support for Light and Dark modes, respecting system preferences.
 
+## Transaction Import
+
+A transfer between two accounts that both live in your instance is imported **once**, from the sending
+side. Your bank reports the same movement twice, as a debit on the sender and as a credit on the
+receiver, so Piggy drops the credit leg to keep the amount from being counted twice. The two legs are
+paired by the partner IBAN and, for banks that only report it on the debit leg, by matching a credit
+against a debit of the same amount booked within three days.
+
+**Known limitation:** if the *sending* account exists in Piggy but is never synced, because you maintain
+it manually or its bank has no FinTS connection, the credit leg on the receiving account is still
+dropped while the debit leg never arrives. Such a transfer is not imported at all and has to be booked
+by hand. This is a deliberate trade-off: the alternative would double-count every ordinary transfer.
+
 ## Quick Start
 
 Deploy your personal instance using Docker.

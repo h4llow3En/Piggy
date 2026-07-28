@@ -108,21 +108,17 @@ async def _is_potential_duplicate(
     return bool((await db.execute(stmt)).scalar())
 
 
-async def _get_internal_accounts(
-    db: AsyncSession, user_id: Optional[uuid.UUID] = None
-) -> dict:
+async def _get_internal_accounts(db: AsyncSession) -> dict:
     """
     Fetch internal accounts as a dict {normalized_iban: account_id}.
 
     Keyed by the normalized IBAN so lookups match what
-    ``is_internal_transfer_candidate`` compares against. Without ``user_id`` this
-    spans all users on purpose, that is what makes transfers between household
-    members resolve to a target account.
+    ``is_internal_transfer_candidate`` compares against. This spans all users on
+    purpose: accounts are shared across the household, so both the accounts we
+    fetch bookings for and the transfer targets we resolve against must not be
+    narrowed to a single user.
     """
-    query = select(Account.id, Account.iban)
-    if user_id:
-        query = query.where(Account.user_id == user_id)
-    result = await db.execute(query)
+    result = await db.execute(select(Account.id, Account.iban))
     return {
         normalize_iban(iban): acc_id
         for acc_id, iban in [(r[0], r[1]) for r in result.all()]
@@ -146,7 +142,10 @@ async def _process_transaction(  # pylint: disable=too-many-arguments,too-many-p
 
     target_account_id = None
     if is_internal_transfer_candidate(it.partner_iban, known_ibans):
-        # skip transfers towards this account
+        # The credit leg is the same movement as the debit leg on the sending
+        # account, so only the debit leg becomes the transfer. Credit legs the
+        # bank reports without a partner IBAN do not land here and are removed
+        # by _drop_mirrored_credit_legs instead.
         if ttype == TransactionType.INCOME:
             return None
         ttype = TransactionType.TRANSFER
@@ -183,6 +182,51 @@ async def _process_transaction(  # pylint: disable=too-many-arguments,too-many-p
     )
 
 
+def _drop_mirrored_credit_legs(
+    previews: List[BankTransactionPreview],
+) -> List[BankTransactionPreview]:
+    """
+    Remove credit legs that mirror an internal transfer already in the batch.
+
+    An internal transfer is reported twice, once as a debit on the sending and
+    once as a credit on the receiving account. ``_process_transaction`` drops the
+    credit leg by its partner IBAN, but many banks fill that field only on the
+    debit leg. The credit leg then survives as income and the amount is counted
+    twice.
+
+    Each transfer consumes at most one credit leg, so a genuine payment that
+    happens to have the same amount on the same day is not swallowed along
+    with it.
+    """
+    unmatched = [
+        p
+        for p in previews
+        if p.type == TransactionType.TRANSFER and p.target_account_id is not None
+    ]
+    if not unmatched:
+        return previews
+
+    mirrored: set[int] = set()
+    for index, credit in enumerate(previews):
+        if credit.type != TransactionType.INCOME:
+            continue
+        for transfer in unmatched:
+            # Same money, arriving where the transfer points. Banks book the two
+            # legs a couple of days apart when they clear over night.
+            if (
+                transfer.target_account_id == credit.account_id
+                and transfer.amount == credit.amount
+                and abs(transfer.timestamp - credit.timestamp) <= timedelta(days=3)
+            ):
+                unmatched.remove(transfer)
+                mirrored.add(index)
+                break
+
+    if not mirrored:
+        return previews
+    return [p for index, p in enumerate(previews) if index not in mirrored]
+
+
 async def _collect_previews(
     client: FinTSClient,
     conn: BankConnection,
@@ -190,19 +234,19 @@ async def _collect_previews(
     until: date,
     db: AsyncSession,
 ) -> List[BankTransactionPreview]:
-    """Fetch and map the bookings of every account belonging to the connection owner."""
-    # Matching stays global: a payment to another household member's account
-    # is a transfer, not an expense. Only the accounts we actually fetch from
-    # are limited to the connection owner, the bank cannot serve the others.
+    """Fetch and map the bookings of every account this connection can serve."""
+    # Accounts are household wide, not per user: a login may well serve a joint
+    # account or an account registered under another member. What the connection
+    # is actually allowed to see is decided by the bank, ``fetch_transactions``
+    # returns nothing for an IBAN outside the FinTS session.
     internal_accounts = await _get_internal_accounts(db)
     known_ibans = await _get_known_ibans(db)
-    own_accounts = await _get_internal_accounts(db, user_id=conn.user_id)
 
     # Trained once per sync, not once per booking
     predict_category = await build_category_classifier(db, conn.user_id)
 
     previews: List[BankTransactionPreview] = []
-    for iban, account_id in own_accounts.items():
+    for iban, account_id in internal_accounts.items():
         try:
             for it in client.fetch_transactions(iban, since, until):
                 if preview := await _process_transaction(
@@ -218,7 +262,10 @@ async def _collect_previews(
         except Exception:  # pylint: disable=broad-exception-caught
             logger.exception("Failed to fetch transactions for account %s", iban)
             continue
-    return previews
+
+    # Only possible once every account of the batch has been mapped, the two
+    # legs of a transfer come from two different accounts
+    return _drop_mirrored_credit_legs(previews)
 
 
 async def preview_connection(
